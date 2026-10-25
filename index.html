@@ -1,24 +1,37 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f7faf8">
-  <meta name="description" content="SAATH — a fictional, local community care prototype. Civilian reporting and authorized volunteer response.">
-  <title>SAATH · Care continues, together</title>
-  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="design.css">
-  <script src="model.js" defer></script>
-  <script src="i18n.js" defer></script>
-  <script src="voice.js" defer></script>
-  <script src="app.js" defer></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Saath Care</title>
+<meta name="description" content="Saath: a ward-level care network. Neighbours report a need, verified volunteers pick it up, everyone sees each step.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,300..700&family=Roboto+Mono:wght@400;500;600&family=Noto+Sans+Devanagari:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <a class="skip" href="#main">Skip to content</a>
-  <div id="app"></div>
-  <div id="toast" role="status" aria-live="polite"></div>
-  <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
-  <noscript>SAATH needs JavaScript enabled. This is a local demonstration, not an emergency response service.</noscript>
+<div class="stage">
+  <aside class="about">
+    <div class="logo"><span class="logo-m"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="5"/><circle cx="15" cy="12" r="5"/></svg></span><span>Saath</span></div>
+    <h2>Care continues, together.</h2>
+    <p>A ward-level care network for Kanpur. Neighbours describe a need in their own words. Verified volunteers take the tasks that fit their zone and skills. The person who reported sees every step.</p>
+    <p class="eyebrow">Jump in</p>
+    <div class="about-actions">
+      <button data-demo="civ">Report as a neighbour <span aria-hidden="true">→</span></button>
+      <button data-demo="vol">Volunteer as Rohan <span aria-hidden="true">→</span></button>
+      <button data-demo="reset">Start over <span aria-hidden="true">↺</span></button>
+    </div>
+    <p class="fine">Prototype · made-up people and places · nothing is sent · emoji: Microsoft Fluent (MIT)</p>
+  </aside>
+
+  <div class="device">
+    <div class="app" id="app"></div>
+    <div class="sheet-wrap" id="sheet" hidden></div>
+    <div class="snack" id="toast" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>

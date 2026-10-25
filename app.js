@@ -1,275 +1,1245 @@
-/* UI layer: local fictional demo; all communication and approvals are simulated. */
 'use strict';
-const M = Saath;
-let loaded;
-try { loaded = M.load(window.localStorage); }
-catch (_) { loaded = { db:M.seed(), warning:'storage' }; }
-let db = loaded.db, storageWarning = loaded.warning, storageBlocked = !!loaded.warning;
-let currentFilter='all', search='', selectedZone='A', voiceText='', voiceNotice='', recording=false, voiceStage='idle', voiceSeconds=0, voiceBase='', authRole='civilian', phone='', otpStage=false, loginError='', formErrors=[], fieldDraft={}, currentChannel='team', guideQuery='';
-let toastTimer, audioPlaying=null, openingPlayed=false;
-const L=en=>db.prefs.lang==='hi'?(SAATH_HI[en]||en):en;
-const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const icons={
-  text:'<path d="M3 5h12M9 5v15M5 20h8M15 10h7M18.5 10v10"/>',
-  stop:'<rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor"/>',
-  mic:'<rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/>',
-  arrow:'<path d="M5 12h14m-5-5 5 5-5 5"/>',back:'<path d="m15 5-7 7 7 7"/>',check:'<path d="m5 12 4 4L19 6"/>',shield:'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/>',
-  heart:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',
-  people:'<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m2-16a3 3 0 0 1 0 6m2 10v-3a5 5 0 0 0-2-4"/>', person:'<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>',
-  bell:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',settings:'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="12" r="2" fill="currentColor"/><circle cx="10" cy="18" r="2" fill="currentColor"/>',
-  book:'<path d="M12 5C8 2 3 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-3-1-7-2-10 1Zm0 0v15"/>',folder:'<path d="M3 6V4h7l2 3h9v13H3z"/>',home:'<path d="m3 10 9-7 9 7v11h-6v-7H9v7H3Z"/>',
-  pin:'<path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',map:'<path d="m3 5 6-3 6 3 6-3v17l-6 3-6-3-6 3Zm6-3v17m6-14v17"/>',
-  warning:'<path d="m12 3 10 18H2zM12 9v5m0 3v1"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/>',cloud:'<path d="M6 18a5 5 0 1 1 0-10 7 7 0 0 1 13 1 4.5 4.5 0 0 1-1 9"/><path d="M12 12v10m-3-7 3-3 3 3"/>',
-  chat:'<path d="M21 15a3 3 0 0 1-3 3H9l-6 4V5a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z"/><path d="M7 8h10M7 12h7"/>',lock:'<rect x="5" y="10" width="14" height="12" rx="3"/><path d="M8 10V6a4 4 0 0 1 8 0v4M12 15v3"/>',
-  sound:'<path d="M11 4 6 8H2v8h4l5 4zM15 8a6 6 0 0 1 0 8m3-12a11 11 0 0 1 0 16"/>',mute:'<path d="M11 4 6 8H2v8h4l5 4zM16 9l6 6m0-6-6 6"/>',search:'<circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/>',edit:'<path d="m15 3 6 6L9 21H3v-6ZM12 6l6 6"/>',
-  plus:'<path d="M12 4v16M4 12h16"/>',close:'<path d="m5 5 14 14M5 19 19 5"/>',phone:'<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/>',relay:'<path d="m12 2 6 5-12 10 6 5V2ZM6 7l12 10"/>',refresh:'<path d="M20 9a8 8 0 0 0-14-5L3 7m0-5v5h5m-4 8a8 8 0 0 0 14 5l3-3m0 5v-5h-5"/>',
-  exit:'<path d="M9 4H3v16h6m5-13 5 5-5 5m-7-5h12"/>',flag:'<path d="M4 22V3c6-4 10 4 16 0v10c-6 4-10-4-16 0"/>',info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',food:'<path d="M4 2v7a3 3 0 0 0 6 0V2M7 2v20m11 0V2c-5 3-5 10 0 11"/>',send:'<path d="m3 3 19 9-19 9 4-9ZM7 12h15"/>',checklist:'<rect x="5" y="3" width="15" height="19" rx="2"/><path d="M9 1h7v5H9m0 6 2 2 5-5m-7 9h7"/>',globe:'<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>'
+// Saath prototype: one state object, string-template screens, event delegation. No framework.
+
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const KEY = 'saath-redesign-v1';
+const HOUR = 3600e3;
+
+/* ---------- domain ---------- */
+const ZONES = { A: 'Shanti Nagar', B: 'Lake Road' };
+const WHO = { daily: 'Needs daily care', child: 'Child without a caregiver', medical: 'Needs medical help', essentials: 'Can’t get essentials', alone: 'May be alone or unreachable', other: 'Other / not sure' };
+const HELP = { food: 'Food / meals', water: 'Drinking water', supplies: 'Essential supplies', care: 'Everyday care', medication: 'Medication access', welfare: 'Welfare check', protected: 'Protected referral', other: 'Other / not sure' };
+const REL = { family: 'Family member', friend: 'Friend', neighbour: 'Neighbour', caregiver: 'Caregiver or guardian', professional: 'Health or support worker', volunteer: 'Volunteer or community worker', bystander: 'Passer-by / stranger', other: 'Prefer not to say' };
+const KNOW = { spoke: 'Spoke to them', saw: 'Saw it myself', told: 'Someone told me', unreachable: 'Can’t reach them' };
+const CONSENT = { agreed: 'Agreed to share', declined: 'Did not agree', unable: 'Couldn’t ask', unknown: 'Not asked' };
+const GENDER = { woman: 'Woman / girl', man: 'Man / boy', other: 'Other / not stated' };
+const URG = { urgent: 'Urgent review', priority: 'Priority review', routine: 'Routine' };
+const ORDER = { urgent: 0, priority: 1, routine: 2 };
+const STAGES = ['received', 'reviewed', 'assigned', 'visited', 'closed'];
+const STAGE = { received: 'Report received', reviewed: 'Coordinator reviewed', assigned: 'Volunteer on it', visited: 'Visit done', closed: 'Care delivered' };
+const NEXT = { received: '', reviewed: 'Usually within 2 hours', assigned: 'A nearby volunteer with the right skills', visited: 'They’ll check in person', closed: 'You’ll see the outcome here' };
+const OUT = { delivered: ['Care delivered', 'They got what they needed'], referred: ['Referred onward', 'Passed to a doctor, shelter or official service'], unreachable: ['Couldn’t reach them', 'Nobody home, or they declined'] };
+// ponytail: demo roster with one shared code; real auth comes from the coordinator system.
+const VOLS = {
+  'SAATH-V101': { name: 'Rohan', zone: 'A', scopes: ['general'], skill: 'General care' },
+  'SAATH-V102': { name: 'Meera', zone: 'A', scopes: ['general', 'medical'], skill: 'Medical scope' },
+  'SAATH-V103': { name: 'Imran', zone: 'B', scopes: ['general'], skill: 'General care' },
 };
-const I=name=>`<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${icons[name]||icons.heart}</svg>`;
-const btn=(text,action,cls='',extra='',icon='')=>`<button type="button" class="btn ${cls}" data-action="${action}" ${extra}>${icon?I(icon):''}${text}</button>`;
-const textBtn=(text,action,extra='',icon='')=>`<button type="button" class="text-btn" data-action="${action}" ${extra}>${icon?I(icon):''}${text}</button>`;
-const pill=(text,color='',icon='')=>`<span class="pill ${color}">${icon?I(icon):''}${text}</span>`;
-const notice=(title,body,color='',icon='info')=>`<div class="notice ${color}">${I(icon)}<div>${title?`<b>${title}</b>`:''}${body}</div></div>`;
-const criteria=()=>[
-  ['daily',L('Person needing daily care'),L('Needs help with eating, hygiene, mobility or other everyday activities')],
-  ['child',L('Child without a caregiver'),L('A child or infant whose responsible adult is missing or unavailable')],
-  ['medical',L('Person needing medical assistance'),L('Needs medication access, medical attention or ongoing treatment')],
-  ['essentials',L('Person unable to access essentials'),L('Cannot obtain food, drinking water or necessary supplies independently')],
-  ['unreachable',L('Person who may be alone or unreachable'),L("There is concern for their welfare, but their situation hasn't been confirmed")],
-  ['other',L('Other / Not sure'),L("The person's situation doesn't fit, or you don't have enough information")]
-];
-const relations=()=>[['family',L('Family member or relative')],['friend',L('Friend')],['neighbor',L('Neighbor')],['caregiver',L('Caregiver or guardian')],['professional',L('Healthcare or support professional')],['volunteer',L('Volunteer or community worker')],['bystander',L('Concerned bystander / Stranger')],['other',L('Other / Prefer not to say')]];
-const needs=()=>[['food',L('Food / meals')],['water',L('Drinking water')],['supplies',L('Essential supplies')],['daily',L('Everyday care')],['medication',L('Medication access')],['welfare',L('Welfare check')],['safeguarding',L('Protected referral')],['other',L('Other / Not sure')]];
-const sources=()=>[['spoke',L('Spoke to the person')],['observed',L('Personally observed')],['third-party',L('Someone told me')],['unreachable',L('Cannot contact them; concerned')],['unknown',L('Not sure')]];
-const consentOptions=()=>[['yes',L('Agreed to share these details')],['no',L('Did not agree')],['unable',L('Unable to consent')],['unknown',L('Not known / not asked')]];
-const taskName=type=>({welfare:L('Welfare check'),essentials:L('Essentials delivery'),medical:L('Medical referral support'),safeguarding:L('Protected safeguarding referral')})[type]||type;
-const transportName=s=>({ack:L('Server acknowledged · demo'),queued:L('Queued · NOT SENT'),failed:L('Failed · retry needed'),peer:L('Peer copy · delivery unknown')})[s]||s;
-const careName=s=>({open:L('Open · awaiting help'),receiving:L('Receiving assistance'),followup:L('Follow-up required'),review:L('Coordinator review needed'),continuing:L('Continuing-care responsibility confirmed')})[s]||s;
-const verifyName=s=>({reported:L('Reported · unverified'),'verified-limited':L('Observed · limited verification'),unable:L('Unable to verify')})[s]||s;
-const taskStatus=s=>({available:L('Available'),accepted:L('Accepted'),'in-progress':L('In progress'),completed:L('Completed · confirmed'),escalated:L('Escalated'),unable:L('Incomplete / unconfirmed')})[s]||s;
-const priority=s=>({routine:L('Routine'),high:L('Priority review'),critical:L('Urgent review')})[s];
-const colors=s=>['critical','escalated','failed','conflict'].includes(s)?'red':['high','queued','peer','followup','review','unable'].includes(s)?'amber':['ack','completed','continuing'].includes(s)?'green':'';
-const label=(items,key)=>items.find(x=>x[0]===key)?.[1]||L('Not provided');
-const time=value=>new Date(value).toLocaleString(db.prefs.lang==='hi'?'hi-IN':'en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-const badgeName=b=>({general:L('Verified volunteer'),military:L('Military background'),medical:L('Medical practitioner'),psychologist:L('Psychologist'),legal:L('Legal practitioner')})[b];
-function persist(){if(storageBlocked)return;try{M.save(db,localStorage)}catch(_){storageWarning='storage';storageBlocked=true;}}
-function sound(type){if(!db.prefs.sound)return;const files={open:'Opening app sound',click:'click sound',soft:'soft pop',step:'medium pop',success:'Completion sound',notify:'Notification',alert:'Alert',error:'error'};audioPlaying?.pause();audioPlaying=new Audio(`assets/audio/${files[type]||files.click}.mp3`);audioPlaying.volume=.3;audioPlaying.play().catch(()=>{});}
-function toast(msg,error=false){const el=document.querySelector('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),4200);if(error)sound('error');}
-function fail(error){const reasons={access:L('This action requires an authorized assignment.'),offline:L('Connect in demo settings before accepting or syncing.'),approval:L('Coordinator authorization is required for this task.'),qualification:L('Your verified permissions do not cover this task.'),claimed:L('This task has already been claimed.'),invalid:L('Please complete the required fields.'),followup:L('Add a future follow-up time and the next care action.'),pending:L('Sync the existing local note before recording another update.'),conflict:L('Conflicting records need coordinator review.'),'no-peer':L('Share a simulated copy with a nearby device first.')};toast(reasons[error.message]||L('The action could not be completed. Your saved data is retained.'),true);}
-function go(path){stopVoice();if(location.hash.slice(1)===path){render();window.scrollTo(0,0)}else location.hash=path;}
-function home(){return db.session?.role==='volunteer'?'/overview':'/home';}
-function route(){return (location.hash.slice(1)|| (db.session?home():'/language')).split('/').filter(Boolean);}
-function showDialog(title,body){const d=document.querySelector('#dialog');d.className='';delete d.dataset.selection;d.innerHTML=`<button type="button" class="icon-btn dialog-close" data-action="close-dialog" aria-label="${L('Close')}">${I('close')}</button><div class="dialog-body"><h2 id="dialog-title">${title}</h2>${body}</div>`;if(!d.open)d.showModal();}
-function closeDialog(){const dialog=document.querySelector('#dialog'),field=dialog.dataset.selection;dialog.close();dialog.className='';delete dialog.dataset.selection;if(field)document.querySelector(`[data-action="open-selection"][data-field="${field}"]`)?.focus();}
-function newDraft(){return{id:M.id('ST').slice(0,14).toUpperCase(),mode:'manual',criteria:[],needs:[],zone:'A',name:'',age:'',gender:'',landmark:'',notes:'',relation:'',evidence:'',subjectConsent:'',danger:'',context:''};}
-function draft(){const key=db.session?.account||'guest';return db.drafts[key]||(db.drafts[key]=newDraft());}
-function begin(mode){const d=draft();d.mode=mode;persist();go('/safety');}
-function field(name,title,value='',type='text',extra='',hint=''){return `<div class="field"><label for="${name}">${title}</label><input id="${name}" name="${name}" type="${type}" value="${esc(value)}" ${extra} ${formErrors.includes(name)?'class="invalid" aria-invalid="true"':''}>${hint?`<small>${hint}</small>`:''}${formErrors.includes(name)?`<span class="field-error">${L('Please check this field.')}</span>`:''}</div>`;}
-function select(name,title,items,value='',extra=''){return `<div class="field"><label for="${name}">${title}</label><select id="${name}" name="${name}" ${extra} ${formErrors.includes(name)?'class="invalid" aria-invalid="true"':''}><option value="">${L('Choose an option')}</option>${items.map(([v,l])=>`<option value="${v}" ${value===v?'selected':''}>${l}</option>`).join('')}</select>${formErrors.includes(name)?`<span class="field-error">${L('Choose an option.')}</span>`:''}</div>`;}
-function textarea(name,title,value='',extra='',hint=''){return `<div class="field"><label for="${name}">${title}</label><textarea id="${name}" name="${name}" ${extra} ${formErrors.includes(name)?'class="invalid" aria-invalid="true"':''}>${esc(value)}</textarea>${hint?`<small>${hint}</small>`:''}${formErrors.includes(name)?`<span class="field-error">${L('Add the known details, or state what is unknown.')}</span>`:''}</div>`;}
-function intro(kicker,title,sub=''){return `<div class="intro"><div class="kicker">${kicker}</div><h1>${title}</h1>${sub?`<p>${sub}</p>`:''}</div>`;}
-function heading(title,back=home()){return `<div class="screen-heading"><button class="icon-btn" data-action="go" data-path="${back}" aria-label="${L('Back')}">${I('back')}</button><h1>${title}</h1></div>`;}
-function errorSummary(){return formErrors.length?notice(L('A few details need your attention'),L('Complete the highlighted fields. Nothing has been sent.'),'red','warning'):'';}
-function sidebar(){const v=M.volunteer(db);return `<aside class="sidebar"><div class="connection ${M.online(db)?'':'offline'}">${M.online(db)?L('Local demo · connected mode'):L('Local demo · offline / retry mode')}</div><h2 class="side-title">${L('A little help.<br><span>A lasting difference.</span>')}</h2><p class="side-copy">${L('When someone’s support disappears, care should not. Together, we keep it going.')}</p><div class="side-line"></div>${v?`<div class="side-person"><div class="avatar ${v.color}">${v.initials}</div><div><b>${esc(v.name)}</b><p class="session-label">${L('Verified volunteer · Zone')} ${v.zone}</p></div></div>`:`<div class="side-label">${L('ONE CONNECTED CARE JOURNEY')}</div>`}<div class="side-steps">${[[L('Notice a need'),L('Share only what you know.')],[L('Connect with care'),L('Authorized people, appropriate help.')],[L('Keep care going'),L('An outcome, and a next step.')]].map((x,i)=>`<div class="side-step"><span class="step-no">${i+1}</span><div><b>${x[0]}</b>${x[1]}</div></div>`).join('')}</div><div class="side-footer">${L('Fictional Kanpur ward · Day-one scenario<br>Private browser data. No live dispatch.')}</div>${db.session?textBtn(L('Demo controls'),'go','data-path="/settings"','settings'):''}</aside>`;}
-function navbar(page){const v=db.session?.role==='volunteer';const tabs=v?[[L('Team'),'people','/team'],[L('Home'),'home','/overview'],[L('Cases'),'folder','/cases']]:[[L('Guides'),'book','/guides'],[L('Home'),'home','/home'],[L('Reports'),'folder','/reports']];return `<nav class="bottom-nav" aria-label="${L('Main navigation')}">${tabs.map((x,i)=>`<button class="nav-btn ${i===1?'center':''} ${page===x[2].slice(1)?'active':''}" data-action="go" data-path="${x[2]}" ${page===x[2].slice(1)?'aria-current="page"':''}>${['book','folder'].includes(x[1])?`<img class="nav-art" src="assets/figma/${x[1]==='book'?'guides':'reports'}.svg" alt="">`:I(x[1])}<span>${x[0]}</span></button>`).join('')}</nav>`;}
-function appHeader(page){if(page==='voice')return `<header class="topbar voice-topbar"><button class="icon-btn" data-action="go" data-path="/safety" aria-label="${L('Back')}">${I('back')}</button><div class="voice-wordmark">SAATH</div><button class="lang-btn" data-action="toggle-lang" aria-label="${L('Language')}">${I('text')}</button></header>`;return `<header class="topbar"><button class="brand" data-action="go" data-path="${db.session?home():'/language'}" aria-label="${L('SAATH home')}"><img src="assets/mark.svg" alt="">SAATH</button><div class="header-actions"><button class="lang-btn" data-action="toggle-lang" aria-label="${L('Switch to Hindi')}">${L('हिंदी')}</button><button class="icon-btn sound-header" data-action="sound" aria-label="${db.prefs.sound?L('Mute sounds'):L('Enable sounds')}">${I(db.prefs.sound?'sound':'mute')}</button>${db.session?`<button class="icon-btn" data-action="go" data-path="/notifications" aria-label="${L('Notifications')}">${I('bell')}${unreadNotices().length?'<span class="dot"></span>':''}</button>`:''}<button class="icon-btn" data-action="go" data-path="/settings" aria-label="${L('Settings and demo controls')}">${I('settings')}</button></div></header>`;}
-function render(){
-  document.querySelector('#toast').classList.remove('show');
-  M.expire(db);document.documentElement.lang=db.prefs.lang;
-  let [page='language',a,b]=route();
-  document.body.dataset.page=page;
-  document.body.dataset.role=db.session?.role||'guest';
-  const publicPages=['language','roles','login','guides','guide','settings'];
-  const civilian=['home','safety','voice','intake','review','receipt','reports','case','relay'];
-  const vol=['overview','cases','case','check','outcome','team','map','chats','chat','notifications'];
-  if(!db.session&&!publicPages.includes(page)){go('/language');return}
-  if(db.session?.role==='civilian'&&vol.includes(page)&&!civilian.includes(page)&&page!=='notifications'){go('/home');return}
-  if(db.session?.role==='volunteer'&&civilian.includes(page)&&!vol.includes(page)){go('/overview');return}
-  if(![...publicPages,...civilian,...vol,'notifications'].includes(page)){go(db.session?home():'/language');return}
-  let content;
-  try{const pages={language:languagePage,roles:rolePage,login:loginPage,home:civilianHome,safety:safetyPage,voice:voicePage,intake:intakePage,review:reviewPage,receipt:receiptPage,reports:reportsPage,overview:overviewPage,cases:casesPage,case:casePage,check:checkPage,outcome:outcomePage,relay:relayPage,team:teamPage,map:mapPage,guides:guidesPage,guide:guidePage,chats:chatsPage,chat:chatPage,notifications:notificationsPage,settings:settingsPage};content=pages[page](a,b)}catch(e){content=`${heading(L('This case is not available'))}${notice(L('Access is limited to your role and zone.'),L('Return home to see the information available to this account.'),'amber')}${btn(L('Return home'),'go','wide spaced',`data-path="${home()}"`)}`;console.error(e)}
-  document.querySelector('#app').innerHTML=`<div class="demo-strip">${L('INTERACTIVE PROTOTYPE · Fictional data · No live emergency response')}</div>${storageWarning?`<div class="storage-warning" role="alert">${L('Storage is unavailable or unreadable. This session is temporary; existing stored data has not been overwritten. Export your data in Demo controls.')}</div>`:''}${appHeader(page)}<div class="layout">${sidebar()}<main id="main" tabindex="-1"><div class="screen">${content}</div></main></div>${db.session?navbar(page):''}`;
-  persist();
+const SAMPLE = 'There’s an old uncle near the community library in Shanti Nagar. He lives alone. His daughter usually brings his food and medicines, but she’s been in hospital for a week. He looked weak and said he hasn’t had a proper meal in two days.';
+const SAMPLE_NOTE = 'Older man, lives alone. His daughter usually brings food and medicines but has been in hospital for a week. He looked weak and said he hasn’t had a proper meal in two days.';
+
+const GUIDES = {
+  danger: { t: 'Immediate danger', num: '112', body: ['Call 112, India’s emergency number. Saath does not send emergency help.', 'Keep yourself safe. Help from a distance if you need to.', 'Don’t move an injured person unless where they are is more dangerous.', 'Once help is on the way, report here so care continues after the emergency.'] },
+  caregiver: { t: 'Someone’s caregiver is missing', body: ['Ask simple questions: Have you eaten today? Do you have your medicines? Who usually helps you?', 'Write down what you see and hear, not what you think it means.', 'Choose “Needs daily care” so a volunteer can check in regularly.'] },
+  child: { t: 'A child without a caregiver', num: '1098', body: ['If it’s safe, stay with the child in a visible public place.', 'Call Childline on 1098.', 'Don’t take the child home and don’t post photos.', 'Choose “Protected referral”. Only trained coordinators see these reports.'] },
+  medical: { t: 'Medicine and medical needs', body: ['Note medicine names if you can see the packets.', 'Don’t give anyone medicine yourself.', 'Choose “Medication access”. Only volunteers with medical training can take these tasks.'] },
+  offline: { t: 'Reporting without a connection', body: ['Your report is saved on this phone as you fill it in.', 'It is only sent when you tap Send report and see the confirmation screen.', 'Unsent reports show as “Unfinished report” on your home screen.'] },
+  welfare: { t: 'A respectful welfare check', body: ['Introduce yourself and say why you came.', 'Ask before sharing anyone’s details. “Not asked” is an honest answer.', 'Tell them what will happen next, and only promise what you know will happen.'] },
+};
+
+/* ---------- Hindi (falls back to English for anything missing) ---------- */
+const HI = {
+  'Welcome to Saath': 'साथ में आपका स्वागत है', 'Care starts with understanding.': 'देखभाल समझ से शुरू होती है।',
+  'Choose the language you’re comfortable with. You can change it anytime.': 'वह भाषा चुनें जिसमें आप सहज हैं। आप इसे कभी भी बदल सकते हैं।',
+  'Continue': 'आगे बढ़ें', 'Back': 'वापस', 'Prototype': 'प्रोटोटाइप', 'Switch language': 'भाषा बदलें',
+  'How are you joining?': 'आप कैसे जुड़ रहे हैं?', 'Two ways in. One care network for the ward.': 'जुड़ने के दो रास्ते। पूरे वार्ड के लिए एक देखभाल नेटवर्क।',
+  'Report a need': 'ज़रूरत बताएँ', 'For someone nearby, or yourself': 'किसी पास वाले के लिए, या अपने लिए',
+  'I’m a volunteer': 'मैं स्वयंसेवक हूँ', 'Sign in with your volunteer ID': 'अपनी स्वयंसेवक आईडी से साइन इन करें',
+  'You only share what you know. Nothing is sent until you review it.': 'आप सिर्फ़ वही बताएँ जो आप जानते हैं। जाँचने से पहले कुछ नहीं भेजा जाता।',
+  'Neighbour sign-in': 'पड़ोसी साइन-इन', 'Your phone number': 'आपका फ़ोन नंबर', 'Enter the 6-digit code': '6 अंकों का कोड डालें',
+  'We sent it to': 'हमने यहाँ भेजा है', 'We use it to send you updates on the care you asked for.': 'इससे हम आपको आपके अनुरोध की जानकारी भेजते हैं।',
+  'Mobile number': 'मोबाइल नंबर', 'Prototype: no SMS is sent.': 'प्रोटोटाइप: कोई SMS नहीं भेजा जाता।', 'Prototype code': 'प्रोटोटाइप कोड', 'Code': 'कोड',
+  'Send code': 'कोड भेजें', 'Verify': 'पुष्टि करें', 'Change number': 'नंबर बदलें',
+  'Can’t get a code? Report without verifying': 'कोड नहीं मिला? बिना पुष्टि के बताएँ',
+  'Enter a 10-digit mobile number.': '10 अंकों का मोबाइल नंबर डालें।',
+  'That code doesn’t match. Check the 6 digits and try again.': 'कोड मेल नहीं खाता। 6 अंक जाँचकर फिर कोशिश करें।',
+  'You’re signed in.': 'आप साइन इन हैं।', 'You can report now. Updates need a verified number.': 'आप अब रिपोर्ट कर सकते हैं। अपडेट के लिए पुष्ट नंबर चाहिए।',
+  'Volunteer sign-in': 'स्वयंसेवक साइन-इन', 'Your zone. Your team.': 'आपका ज़ोन। आपकी टीम।',
+  'Use the ID your ward coordinator gave you. Your skills decide which tasks you can take.': 'वार्ड समन्वयक की दी हुई आईडी इस्तेमाल करें। आपके कौशल तय करते हैं कि आप कौन-से काम ले सकते हैं।',
+  'Volunteer ID': 'स्वयंसेवक आईडी', 'Access code': 'एक्सेस कोड', 'Enter workspace': 'वर्कस्पेस खोलें', 'Prototype volunteers': 'प्रोटोटाइप स्वयंसेवक', 'code': 'कोड',
+  'Zone': 'ज़ोन', 'General care': 'सामान्य देखभाल', 'Medical scope': 'चिकित्सा दायरा',
+  'That ID and code don’t match. Check with your ward coordinator.': 'आईडी और कोड मेल नहीं खाते। अपने वार्ड समन्वयक से पूछें।', 'Welcome': 'स्वागत है',
+  'Kanpur · Ward 12': 'कानपुर · वार्ड 12', 'Who needs care today?': 'आज किसे देखभाल की ज़रूरत है?', 'speak freely': 'खुलकर बोलें',
+  'Tap to tell us': 'बताने के लिए टैप करें', 'Say what you saw. We turn it into a report you can check before sending.': 'जो देखा, वह बोलिए। हम उसे रिपोर्ट बना देंगे, जिसे भेजने से पहले आप जाँच सकते हैं।',
+  'Type it instead': 'लिखकर बताएँ', 'Three short steps': 'तीन छोटे क़दम', 'Someone in danger?': 'कोई ख़तरे में है?', 'Call 112 first': 'पहले 112 पर कॉल करें',
+  'Your requests': 'आपके अनुरोध', 'See all': 'सब देखें', 'Requests you send will show up here.': 'आपके भेजे अनुरोध यहाँ दिखेंगे।',
+  'Updates need a verified number. You can still report.': 'अपडेट के लिए पुष्ट नंबर चाहिए। आप फिर भी रिपोर्ट कर सकते हैं।',
+  'Unfinished report': 'अधूरी रिपोर्ट', 'Saved on this phone · not sent': 'इस फ़ोन पर सहेजी गई · भेजी नहीं गई', 'Discard': 'हटाएँ', 'Resume': 'जारी रखें', 'Example': 'उदाहरण',
+  'Home': 'होम', 'Requests': 'अनुरोध', 'Guides': 'मार्गदर्शन', 'Today': 'आज', 'Cases': 'केस',
+  'Tell us what’s happening': 'बताइए क्या हो रहा है', 'Cancel': 'रद्द करें', 'Listening…': 'सुन रहे हैं…',
+  'Got it. Next, a quick safety check.': 'समझ गए। अब एक छोटी सुरक्षा जाँच।',
+  'Prototype: a sample recording plays. Your microphone is not used.': 'प्रोटोटाइप: एक नमूना रिकॉर्डिंग चलती है। आपका माइक इस्तेमाल नहीं होता।',
+  'Check the report': 'रिपोर्ट जाँचें', 'Step': 'क़दम', 'Safety': 'सुरक्षा', 'Details': 'विवरण', 'Review': 'जाँच',
+  'Is anyone in immediate danger?': 'क्या कोई अभी ख़तरे में है?', 'Choose what you know right now. This doesn’t send an alert.': 'अभी जो पता है वह चुनें। इससे कोई अलर्ट नहीं जाता।',
+  'Yes, there’s danger now': 'हाँ, अभी ख़तरा है', 'Injury, violence, fire, or someone can’t breathe': 'चोट, हिंसा, आग, या किसी को साँस नहीं आ रही',
+  'No immediate danger': 'अभी कोई ख़तरा नहीं', 'They need help, but not this minute': 'मदद चाहिए, पर इसी पल नहीं',
+  'I’m not sure': 'पक्का नहीं पता', 'We’ll treat it as urgent': 'हम इसे ज़रूरी मानेंगे', 'Call 112 now': 'अभी 112 पर कॉल करें',
+  'Saath does not send emergency help. Call the national emergency number, then come back to report so care can continue.': 'साथ आपातकालीन मदद नहीं भेजता। राष्ट्रीय आपात नंबर पर कॉल करें, फिर लौटकर रिपोर्ट करें ताकि देखभाल जारी रहे।',
+  'What do you know?': 'आप क्या जानते हैं?', 'Filled in from what you said. Check each part and fix anything we got wrong.': 'आपकी बात से भरा गया है। हर हिस्सा जाँचें और जो ग़लत हो उसे ठीक करें।',
+  'Share only what you know. Skip anything you’re unsure of.': 'सिर्फ़ वही बताएँ जो पता है। जो पक्का न हो, छोड़ दें।',
+  'Who needs support?': 'किसे मदद चाहिए?', 'Choose all that fit.': 'जो भी लागू हों, सब चुनें।', 'What help is needed?': 'कैसी मदद चाहिए?',
+  'Where can a volunteer find them?': 'स्वयंसेवक उन्हें कहाँ ढूँढ़ें?', 'A landmark people know, e.g. near the temple': 'कोई जानी-पहचानी जगह, जैसे मंदिर के पास',
+  'Landmark': 'पहचान की जगह', 'We don’t detect your location.': 'हम आपकी लोकेशन नहीं लेते।', 'About them': 'उनके बारे में',
+  'Optional. Leave blank if you don’t know.': 'वैकल्पिक। न पता हो तो ख़ाली छोड़ें।', 'Name': 'नाम', 'Age': 'उम्र',
+  'How do you know them?': 'आप उन्हें कैसे जानते हैं?', 'Choose one': 'एक चुनें', 'Did they agree to share their details?': 'क्या वे अपनी जानकारी साझा करने को राज़ी हैं?',
+  'If they didn’t agree, we share only the need and the place.': 'राज़ी न हों तो हम सिर्फ़ ज़रूरत और जगह साझा करते हैं।',
+  'Anything else?': 'और कुछ?', 'What you saw or heard. Not a diagnosis.': 'जो देखा या सुना। कोई निदान नहीं।', 'Please answer this.': 'कृपया इसका जवाब दें।',
+  'Save for later': 'बाद के लिए सहेजें', 'Saved on this phone. Resume it from home.': 'इस फ़ोन पर सहेजा गया। होम से जारी रखें।',
+  'Check before you send': 'भेजने से पहले जाँचें', 'Edit': 'बदलें', 'Who': 'कौन', 'Help': 'मदद', 'Where': 'कहाँ', 'You are their': 'आप उनके', 'Consent': 'सहमति', 'Notes': 'नोट', 'yrs': 'वर्ष',
+  'The ward coordinator and the volunteer who takes this will see these details.': 'वार्ड समन्वयक और यह काम लेने वाला स्वयंसेवक ये विवरण देखेंगे।',
+  'Without consent, volunteers see only the need and the place. Name and age stay with the coordinator.': 'सहमति के बिना स्वयंसेवक सिर्फ़ ज़रूरत और जगह देखते हैं। नाम और उम्र समन्वयक के पास रहते हैं।',
+  'A report asks for care. It does not send emergency help. In danger, call 112.': 'रिपोर्ट देखभाल माँगती है। यह आपातकालीन मदद नहीं भेजती। ख़तरे में 112 पर कॉल करें।',
+  'Send report': 'रिपोर्ट भेजें', 'Report sent': 'रिपोर्ट भेज दी गई', 'Thank you. A ward coordinator will look at it soon.': 'धन्यवाद। वार्ड समन्वयक जल्द इसे देखेंगे।',
+  'What happens next': 'आगे क्या होगा', 'Track this request': 'इस अनुरोध को देखें', 'Back to home': 'होम पर जाएँ',
+  'Report received': 'रिपोर्ट मिली', 'Coordinator reviewed': 'समन्वयक ने देखा', 'Volunteer on it': 'स्वयंसेवक लगे हैं', 'Visit done': 'मुलाक़ात हुई', 'Care delivered': 'देखभाल पहुँची', 'Referred onward': 'आगे भेजा गया',
+  'Usually within 2 hours': 'आमतौर पर 2 घंटे में', 'A nearby volunteer with the right skills': 'सही कौशल वाला पास का स्वयंसेवक', 'They’ll check in person': 'वे ख़ुद जाकर देखेंगे', 'You’ll see the outcome here': 'नतीजा यहीं दिखेगा',
+  'Every report, every step.': 'हर रिपोर्ट, हर क़दम।', 'Report another need': 'एक और ज़रूरत बताएँ', 'Progress': 'प्रगति', 'What you told us': 'आपने क्या बताया',
+  'A little guidance helps.': 'थोड़ा मार्गदर्शन काम आता है।', 'Short, practical notes. Not medical advice.': 'छोटे, काम के नोट। चिकित्सा सलाह नहीं।',
+  'Volunteer': 'स्वयंसेवक', 'Good to have you': 'आपका स्वागत है', 'Tasks you can take': 'काम जो आप ले सकते हैं', 'of {n} open in your zone': 'ज़ोन के {n} खुले केस में से',
+  'Review tasks': 'काम देखें', 'Your active tasks': 'आपके चालू काम', 'Closed by you': 'आपने पूरे किए', 'Needs attention': 'ध्यान चाहिए', 'All cases': 'सभी केस',
+  'Nothing open in your zone right now.': 'अभी आपके ज़ोन में कुछ खुला नहीं है।', 'Your neighbourhood': 'आपका मोहल्ला',
+  'Illustrative map, not for navigation': 'सांकेतिक नक्शा, रास्ता ढूँढ़ने के लिए नहीं', 'Illustrative map of zones A and B': 'ज़ोन A और B का सांकेतिक नक्शा',
+  'You’re on it': 'आप इस पर हैं', 'Taken by': 'इनके पास:', 'You can take this': 'आप यह ले सकते हैं', 'Outside your zone': 'आपके ज़ोन से बाहर', 'Needs medical scope': 'चिकित्सा दायरा चाहिए', 'Coordinator only': 'सिर्फ़ समन्वयक',
+  'Where you can help': 'आप कहाँ मदद कर सकते हैं', 'You can take': 'आप ले सकते हैं', 'All in zone': 'पूरा ज़ोन', 'Yours': 'आपके',
+  'You haven’t taken a task yet.': 'आपने अभी कोई काम नहीं लिया।', 'Nothing here right now. New reports appear as neighbours send them.': 'अभी यहाँ कुछ नहीं। पड़ोसियों की नई रिपोर्ट यहाँ आएँगी।',
+  'Within your scope': 'आपके दायरे में', 'Not in your scope': 'आपके दायरे में नहीं', 'This case is outside your zone.': 'यह केस आपके ज़ोन से बाहर है।',
+  'Needs a volunteer with medical training. The coordinator will find one.': 'चिकित्सा प्रशिक्षण वाले स्वयंसेवक की ज़रूरत है। समन्वयक ढूँढ़ेंगे।',
+  'Protected referrals are handled by trained coordinators only.': 'संरक्षित रेफ़रल सिर्फ़ प्रशिक्षित समन्वयक संभालते हैं।',
+  'What the reporter saw': 'रिपोर्ट करने वाले ने क्या देखा', 'Not shared': 'साझा नहीं', 'Reporter': 'रिपोर्ट करने वाला',
+  'Accept this task': 'यह काम लें', 'Record the visit': 'मुलाक़ात दर्ज करें', 'I can’t do this after all': 'मैं यह नहीं कर पाऊँगा',
+  'Task accepted. The reporter can see a volunteer is on it.': 'काम ले लिया। रिपोर्ट करने वाला देख सकता है कि स्वयंसेवक लगे हैं।',
+  'How did the visit go?': 'मुलाक़ात कैसी रही?', 'They got what they needed': 'उन्हें ज़रूरत की चीज़ मिल गई', 'Passed to a doctor, shelter or official service': 'डॉक्टर, आश्रय या सरकारी सेवा को भेजा',
+  'Couldn’t reach them': 'उन तक नहीं पहुँच पाए', 'Nobody home, or they declined': 'घर पर कोई नहीं था, या उन्होंने मना किया',
+  'Next step for the coordinator': 'समन्वयक के लिए अगला क़दम', 'e.g. Needs rations again next Monday': 'जैसे, अगले सोमवार फिर राशन चाहिए',
+  'Choose how it went.': 'चुनें कि कैसा रहा।', 'Save and close': 'सहेजें और बंद करें', 'Saved. The reporter will see the outcome.': 'सहेजा गया। रिपोर्ट करने वाला नतीजा देखेगा।',
+  'Volunteer couldn’t reach them. Back in the queue.': 'स्वयंसेवक नहीं पहुँच पाए। फिर से कतार में।', 'Volunteer released the task. Back in the queue.': 'स्वयंसेवक ने काम छोड़ा। फिर से कतार में।',
+  'This is a working prototype': 'यह एक चलता हुआ प्रोटोटाइप है', 'People, places and cases are made up.': 'लोग, जगहें और केस काल्पनिक हैं।',
+  'Nothing is sent anywhere. No SMS, no dispatch.': 'कुछ भी कहीं नहीं भेजा जाता। न SMS, न मदद।', 'Please don’t enter real personal or medical details.': 'कृपया असली निजी या चिकित्सा जानकारी न डालें।',
+  'In a real emergency, call 112.': 'असली आपात स्थिति में 112 पर कॉल करें।', 'Switch role': 'भूमिका बदलें', 'Reset prototype data': 'प्रोटोटाइप डेटा रीसेट करें',
+  'Zone A · Shanti Nagar': 'ज़ोन A · शांति नगर', 'Zone B · Lake Road': 'ज़ोन B · लेक रोड', 'Near the community library, Shanti Nagar': 'सामुदायिक पुस्तकालय के पास, शांति नगर',
+  // categories
+  'Needs daily care': 'रोज़ की देखभाल चाहिए', 'Child without a caregiver': 'बिना देखभाल करने वाले के बच्चा', 'Needs medical help': 'चिकित्सा मदद चाहिए',
+  'Can’t get essentials': 'ज़रूरी चीज़ें नहीं मिल रहीं', 'May be alone or unreachable': 'शायद अकेले हैं या संपर्क नहीं हो रहा', 'Other / not sure': 'अन्य / पक्का नहीं',
+  'Food / meals': 'खाना', 'Drinking water': 'पीने का पानी', 'Essential supplies': 'ज़रूरी सामान', 'Everyday care': 'रोज़मर्रा की देखभाल', 'Medication access': 'दवाइयाँ', 'Welfare check': 'हालचाल जाँच', 'Protected referral': 'संरक्षित रेफ़रल',
+  'Family member': 'परिवार के सदस्य', 'Friend': 'दोस्त', 'Neighbour': 'पड़ोसी', 'Caregiver or guardian': 'देखभालकर्ता या अभिभावक', 'Health or support worker': 'स्वास्थ्य या सहायता कर्मी',
+  'Volunteer or community worker': 'स्वयंसेवक या सामुदायिक कार्यकर्ता', 'Passer-by / stranger': 'राहगीर / अनजान', 'Prefer not to say': 'नहीं बताना चाहते',
+  'Spoke to them': 'उनसे बात की', 'Saw it myself': 'ख़ुद देखा', 'Someone told me': 'किसी ने बताया', 'Can’t reach them': 'संपर्क नहीं हो रहा',
+  'Agreed to share': 'साझा करने को राज़ी', 'Did not agree': 'राज़ी नहीं', 'Couldn’t ask': 'पूछ नहीं पाए', 'Not asked': 'पूछा नहीं',
+  'Woman / girl': 'महिला / लड़की', 'Man / boy': 'पुरुष / लड़का', 'Other / not stated': 'अन्य / नहीं बताया',
+  'Urgent review': 'तुरंत समीक्षा', 'Priority review': 'प्राथमिक समीक्षा', 'Routine': 'सामान्य',
+  // guides
+  'Immediate danger': 'तुरंत ख़तरा',
+  'Call 112, India’s emergency number. Saath does not send emergency help.': '112 पर कॉल करें, यह भारत का आपात नंबर है। साथ आपातकालीन मदद नहीं भेजता।',
+  'Keep yourself safe. Help from a distance if you need to.': 'ख़ुद को सुरक्षित रखें। ज़रूरत हो तो दूरी से मदद करें।',
+  'Don’t move an injured person unless where they are is more dangerous.': 'घायल व्यक्ति को तभी हिलाएँ जब वहाँ रहना ज़्यादा ख़तरनाक हो।',
+  'Once help is on the way, report here so care continues after the emergency.': 'मदद रास्ते में हो, तब यहाँ रिपोर्ट करें ताकि आपात स्थिति के बाद भी देखभाल जारी रहे।',
+  'Someone’s caregiver is missing': 'किसी की देखभाल करने वाला नहीं है',
+  'Ask simple questions: Have you eaten today? Do you have your medicines? Who usually helps you?': 'सीधे सवाल पूछें: आज खाना खाया? दवाइयाँ हैं? आमतौर पर कौन मदद करता है?',
+  'Write down what you see and hear, not what you think it means.': 'जो देखें और सुनें वह लिखें, उसका मतलब नहीं।',
+  'Choose “Needs daily care” so a volunteer can check in regularly.': '“रोज़ की देखभाल चाहिए” चुनें ताकि स्वयंसेवक नियमित हालचाल ले सकें।',
+  'A child without a caregiver': 'बिना देखभाल करने वाले के बच्चा',
+  'If it’s safe, stay with the child in a visible public place.': 'सुरक्षित हो तो बच्चे के साथ किसी खुली सार्वजनिक जगह पर रहें।', 'Call Childline on 1098.': 'चाइल्डलाइन 1098 पर कॉल करें।',
+  'Don’t take the child home and don’t post photos.': 'बच्चे को घर न ले जाएँ और फ़ोटो पोस्ट न करें।',
+  'Choose “Protected referral”. Only trained coordinators see these reports.': '“संरक्षित रेफ़रल” चुनें। ये रिपोर्ट सिर्फ़ प्रशिक्षित समन्वयक देखते हैं।',
+  'Medicine and medical needs': 'दवा और चिकित्सा ज़रूरतें',
+  'Note medicine names if you can see the packets.': 'पैकेट दिखें तो दवाओं के नाम लिख लें।', 'Don’t give anyone medicine yourself.': 'किसी को ख़ुद से दवा न दें।',
+  'Choose “Medication access”. Only volunteers with medical training can take these tasks.': '“दवाइयाँ” चुनें। ये काम सिर्फ़ चिकित्सा प्रशिक्षण वाले स्वयंसेवक ले सकते हैं।',
+  'Reporting without a connection': 'बिना इंटरनेट के रिपोर्ट',
+  'Your report is saved on this phone as you fill it in.': 'भरते समय आपकी रिपोर्ट इस फ़ोन पर सहेजी जाती है।',
+  'It is only sent when you tap Send report and see the confirmation screen.': 'यह तभी जाती है जब आप “रिपोर्ट भेजें” दबाते हैं और पुष्टि स्क्रीन दिखती है।',
+  'Unsent reports show as “Unfinished report” on your home screen.': 'न भेजी गई रिपोर्ट होम पर “अधूरी रिपोर्ट” के रूप में दिखती है।',
+  'A respectful welfare check': 'सम्मान से हालचाल जाँच',
+  'Introduce yourself and say why you came.': 'अपना परिचय दें और बताएँ कि क्यों आए।',
+  'Ask before sharing anyone’s details. “Not asked” is an honest answer.': 'किसी की जानकारी साझा करने से पहले पूछें। “पूछा नहीं” भी सच्चा जवाब है।',
+  'Tell them what will happen next, and only promise what you know will happen.': 'बताएँ कि आगे क्या होगा, और वही वादा करें जो पक्का हो।',
+  [SAMPLE]: 'शांति नगर में सामुदायिक पुस्तकालय के पास एक बुज़ुर्ग अंकल हैं। वे अकेले रहते हैं। उनकी बेटी आमतौर पर खाना और दवाइयाँ लाती है, लेकिन वह एक हफ़्ते से अस्पताल में है। वे कमज़ोर दिख रहे थे और बोले कि दो दिन से ठीक से खाना नहीं खाया।',
+  [SAMPLE_NOTE]: 'बुज़ुर्ग व्यक्ति, अकेले रहते हैं। बेटी आमतौर पर खाना और दवाइयाँ लाती है, पर एक हफ़्ते से अस्पताल में है। कमज़ोर दिखे और बोले कि दो दिन से ठीक से खाना नहीं खाया।',
+};
+
+Object.assign(HI, {
+  'Sounds': 'आवाज़', 'Call 112': '112 पर कॉल करें', 'Your relationship': 'उनसे आपका रिश्ता', 'Phone or ID needed': 'फ़ोन या आईडी चाहिए',
+  // v2
+  'Photo': 'फ़ोटो', 'Add a photo': 'फ़ोटो जोड़ें', 'Remove photo': 'फ़ोटो हटाएँ', 'Attached photo': 'जोड़ी गई फ़ोटो',
+  'Optional. Helps the volunteer find and recognise them. Ask before photographing someone.': 'वैकल्पिक। इससे स्वयंसेवक उन्हें ढूँढ़ और पहचान पाते हैं। किसी की फ़ोटो लेने से पहले पूछें।',
+  'Photo attached. You’ll see it once you accept this task.': 'फ़ोटो जुड़ी है। काम लेने के बाद दिखेगी।',
+  'We couldn’t read that file. Try a JPG or PNG photo.': 'यह फ़ाइल नहीं खुली। JPG या PNG फ़ोटो आज़माएँ।',
+  'You’re offline. Reports are saved on this phone.': 'आप ऑफ़लाइन हैं। रिपोर्ट इस फ़ोन पर सहेजी जाती हैं।',
+  'Simulate no connection': 'बिना इंटरनेट का अभ्यास', 'New reports are saved on this phone and sent when you switch this off.': 'नई रिपोर्ट इस फ़ोन पर सहेजी जाती हैं और इसे बंद करने पर भेजी जाती हैं।',
+  'Report saved': 'रिपोर्ट सहेजी गई', 'It will upload as soon as you’re back online.': 'इंटरनेट आते ही यह भेज दी जाएगी।',
+  'If you can, stay with the person until help arrives.': 'हो सके तो मदद आने तक उनके साथ रहें।', 'Saved · waiting for network': 'सहेजी गई · नेटवर्क का इंतज़ार',
+  'Sends when you’re back online': 'इंटरनेट आने पर भेजी जाएगी', 'Back online.': 'फिर से ऑनलाइन।', 'Offline mode on. Reports will be saved on this phone.': 'ऑफ़लाइन मोड चालू। रिपोर्ट इस फ़ोन पर सहेजी जाएँगी।',
+  '1 saved report sent.': '1 सहेजी गई रिपोर्ट भेजी गई।', '{n} saved reports sent.': '{n} सहेजी गई रिपोर्ट भेजी गईं।',
+  'is on the way': 'रास्ते में हैं', '{n} m away': '{n} मीटर दूर', 'Arriving now': 'बस पहुँच रहे हैं',
+  'Chats': 'चैट', 'Stay in touch': 'जुड़े रहें', 'Volunteers': 'स्वयंसेवक', 'Groups': 'समूह', 'Authorities': 'अधिकारी', 'You': 'आप', 'Message': 'संदेश', 'Send': 'भेजें',
+  'Escalate': 'आगे बढ़ाएँ', 'Escalated': 'आगे बढ़ाया गया', 'Send this to the ward coordinator now?': 'इसे अभी वार्ड समन्वयक को भेजें?',
+  'The case becomes urgent and the coordinator is alerted. The reporter sees that it was escalated. In danger, call 112 first.': 'केस ज़रूरी हो जाता है और समन्वयक को सूचना जाती है। रिपोर्ट करने वाला देखता है कि इसे आगे बढ़ाया गया। ख़तरे में पहले 112 पर कॉल करें।',
+  'Worse than reported': 'बताए से ज़्यादा गंभीर', 'Needs medical help now': 'अभी चिकित्सा मदद चाहिए', 'Safety risk at the location': 'वहाँ सुरक्षा का ख़तरा', 'Something else': 'कुछ और',
+  'What should the coordinator know?': 'समन्वयक को क्या जानना चाहिए?', 'Choose a reason.': 'कारण चुनें।', 'Escalate to coordinator': 'समन्वयक को भेजें',
+  'Escalated to the ward coordinator': 'वार्ड समन्वयक को भेजा गया', 'Escalated. The coordinator has been alerted.': 'भेज दिया। समन्वयक को सूचना मिल गई।',
+  'Alerts': 'अलर्ट', 'Report': 'रिपोर्ट करें', 'Overview': 'एक नज़र में', 'Volunteers on duty': 'ड्यूटी पर स्वयंसेवक', 'Open reports': 'खुली रिपोर्ट', 'out of {n}': '{n} में से', 'Open': 'खोलें', 'Live tracking': 'लाइव ट्रैकिंग',
+  'Priority alert waiting': 'प्राथमिक अलर्ट इंतज़ार में', 'An urgent case in your zone needs someone now.': 'आपके ज़ोन के एक ज़रूरी केस को अभी किसी की ज़रूरत है।', 'View details': 'विवरण देखें',
+  'You have new alerts': 'आपके लिए नए अलर्ट', 'New reports came in near you.': 'आपके पास नई रिपोर्ट आई हैं।', 'Go to alerts': 'अलर्ट देखें',
+  'You have new messages': 'आपके लिए नए संदेश', '{n} unread in your chats.': 'चैट में {n} अनपढ़े संदेश।', 'Go to messages': 'संदेश देखें',
+  'Awesome!': 'बढ़िया!', 'Nothing new came up. You’re all sorted.': 'कुछ नया नहीं आया। सब ठीक है।',
+  '{n} need your attention': '{n} पर ध्यान चाहिए', 'No new alerts': 'कोई नया अलर्ट नहीं', 'You’ll see new reports and escalations here.': 'नई रिपोर्ट और आगे बढ़ाए गए केस यहाँ दिखेंगे।',
+  'Map': 'नक्शा', 'Full map': 'पूरा नक्शा', 'All': 'सभी', 'Urgent': 'ज़रूरी', 'Open case': 'केस खोलें', 'Tap a pin to see the case.': 'केस देखने के लिए पिन पर टैप करें।',
+  'Zoom in': 'बड़ा करें', 'Zoom out': 'छोटा करें', 'Back to me': 'मेरी जगह पर',
+  'Where to go': 'कहाँ जाना है', '{n} min walk': '{n} मिनट पैदल',
+  'New report nearby': 'पास में नई रिपोर्ट', 'Locate': 'जगह देखें', 'Later': 'बाद में',
+  'New here? Register as a volunteer': 'नए हैं? स्वयंसेवक बनें', 'Check your application': 'अपना आवेदन देखें', 'Volunteer registration': 'स्वयंसेवक पंजीकरण',
+  'About you': 'आपके बारे में', 'How you can help': 'आप कैसे मदद करेंगे', 'Verification': 'पुष्टि',
+  'A helping hand.': 'मदद का एक हाथ।', 'Starting with you.': 'आपसे शुरुआत।', 'How can you help?': 'आप कैसे मदद कर सकते हैं?', 'Let’s build trust.': 'भरोसा बनाएँ।',
+  'Just the basics. Your details stay with the ward coordinator.': 'बस ज़रूरी बातें। आपकी जानकारी वार्ड समन्वयक के पास रहती है।',
+  'Your name': 'आपका नाम', 'Full name': 'पूरा नाम', 'Prototype: use any 10 digits. No SMS is sent.': 'प्रोटोटाइप: कोई भी 10 अंक डालें। कोई SMS नहीं जाता।', 'Where will you help?': 'आप कहाँ मदद करेंगे?',
+  'Choose what you’re comfortable doing. You can change this later.': 'जो आपको ठीक लगे वह चुनें। बाद में बदल सकते हैं।', 'I can help with': 'मैं इसमें मदद कर सकता/सकती हूँ',
+  'Food and supplies': 'खाना और सामान', 'Daily care and check-ins': 'रोज़ की देखभाल और हालचाल', 'Transport and errands': 'आने-जाने और छोटे काम', 'Medical support': 'चिकित्सा सहायता', 'Child protection': 'बाल सुरक्षा',
+  'Medical support and child protection need an extra qualification check before you can take those tasks.': 'चिकित्सा सहायता और बाल सुरक्षा के काम लेने से पहले अलग योग्यता जाँच होती है।',
+  'How often can you help?': 'आप कितनी बार मदद कर सकते हैं?', 'A few hours a week': 'हफ़्ते में कुछ घंटे', 'Most days': 'ज़्यादातर दिन', 'Only when called': 'सिर्फ़ बुलाने पर',
+  'Your identity is checked before you can accept tasks.': 'काम लेने से पहले आपकी पहचान जाँची जाती है।', 'Identity document': 'पहचान पत्र', 'Document': 'दस्तावेज़', 'Choose a sample document': 'नमूना दस्तावेज़ चुनें',
+  'Sample Aadhaar card': 'नमूना आधार कार्ड', 'Sample voter ID': 'नमूना वोटर आईडी', 'Sample driving licence': 'नमूना ड्राइविंग लाइसेंस',
+  'Prototype documents only. Please don’t upload a real ID.': 'सिर्फ़ प्रोटोटाइप दस्तावेज़। असली आईडी न डालें।', 'Code of conduct': 'आचार संहिता',
+  'I’ll respect people’s privacy, only take tasks I’m trained for, and follow the coordinator’s guidance.': 'मैं लोगों की निजता का सम्मान करूँगा/करूँगी, सिर्फ़ वही काम लूँगा/लूँगी जिसका प्रशिक्षण है, और समन्वयक की बात मानूँगा/मानूँगी।',
+  'Send for verification': 'पुष्टि के लिए भेजें', 'Application sent': 'आवेदन भेजा गया', 'Thanks': 'धन्यवाद',
+  'The ward coordinator usually replies within 2 days. We’ll send your volunteer ID to': 'वार्ड समन्वयक आमतौर पर 2 दिन में जवाब देते हैं। आपकी स्वयंसेवक आईडी यहाँ भेजेंगे:',
+  'Application received': 'आवेदन मिला', 'ID check': 'पहचान जाँच', 'Call with the ward coordinator': 'वार्ड समन्वयक से बात', 'Short safety training': 'छोटा सुरक्षा प्रशिक्षण', 'Volunteer ID issued': 'स्वयंसेवक आईडी जारी',
+  'You applied for': 'आपने आवेदन किया', 'Prototype: approve now': 'प्रोटोटाइप: अभी मंज़ूर करें', 'Approved. Your volunteer ID is': 'मंज़ूर। आपकी स्वयंसेवक आईडी है',
+  'Report as a neighbour': 'पड़ोसी के रूप में', 'New report': 'नई रिपोर्ट', 'Call': 'कॉल करें', 'Done': 'हो गया',
+  'Select all that fit': 'जो लागू हों, सब चुनें', 'task is ready for you': 'काम आपके लिए तैयार है', 'tasks are ready for you': 'काम आपके लिए तैयार हैं',
+  '{n} open in your zone': 'आपके ज़ोन में {n} खुले', '{n} closed by you': 'आपने {n} पूरे किए', 'See all cases': 'सभी केस देखें',
+  'Your tasks': 'आपके काम', 'Ready for you': 'आपके लिए तैयार', 'Nothing needs you right now. New tasks will show up here.': 'अभी आपके लिए कुछ नहीं। नए काम यहाँ दिखेंगे।',
+});
+
+/* Fluent 3D emoji (microsoft/fluentui-emoji, MIT) for content; line icons only for system controls. */
+const WHO_E = { daily: 'heart_hands', child: 'baby', medical: 'medical', essentials: 'basket', alone: 'house', other: 'question' };
+const HELP_E = { food: 'food', water: 'water', supplies: 'package', care: 'hug', medication: 'pill', welfare: 'wave', protected: 'shield', other: 'question' };
+const GUIDE_LOOK = { danger: ['err', 'warning'], caregiver: ['warn', 'older'], child: ['lav', 'child'], medical: ['', 'stethoscope'], offline: ['', 'phone'], welfare: ['lav', 'hugging'] };
+const OUT_E = { delivered: 'check', referred: 'handshake', unreachable: 'house' };
+const VOL_E = 'handshake';
+
+/* ---------- state ---------- */
+function seed() {
+  const now = Date.now();
+  const ev = (...p) => p.map(([s, h]) => ({ s, t: now - h * HOUR }));
+  return {
+    v: 3, lang: null, role: null, user: null, draft: null, sound: true, offline: false, dismissed: [], stack: [{ n: 'lang', p: {} }],
+    chats: seedChats(now),
+    cases: [
+      { id: 'ST-2044', zone: 'A', xy: [44, 128], who: ['alone'], help: ['welfare', 'food'], landmark: 'Near the community library, Shanti Nagar', summary: 'An older man sitting alone outside the library since morning. He says nobody has come to check on him.', rel: 'bystander', know: 'saw', consent: 'unknown', name: '', age: '', gender: 'man', safety: 'no', status: 'received', events: ev(['received', 0.4]) },
+      { id: 'ST-2039', mine: true, example: true, zone: 'A', xy: [0, 0], who: ['medical'], help: ['medication'], landmark: 'Gali 3, near the Shanti Nagar temple', summary: 'Neighbour with a fever has run out of her medicines.', rel: 'neighbour', know: 'spoke', consent: 'agreed', name: '', age: '', gender: '', safety: 'no', status: 'assigned', helper: 'Meera', events: ev(['received', 2], ['reviewed', 1.5], ['assigned', 0.1]) },
+      { id: 'ST-2042', zone: 'A', xy: [128, 108], who: ['medical'], help: ['medication', 'welfare'], landmark: 'Near the ward care desk, gate 2', summary: 'Man with diabetes missed his insulin pickup. His wife, who usually manages it, is in hospital.', rel: 'family', know: 'told', consent: 'unknown', name: '', age: '61', gender: 'man', safety: 'no', status: 'reviewed', events: ev(['received', 6], ['reviewed', 5]) },
+      { id: 'ST-2041', zone: 'A', xy: [70, 62], who: ['daily', 'essentials'], help: ['food', 'supplies'], landmark: 'Lane 4, behind Shanti School', summary: 'Older woman living alone. Her son moved away for work and she has run out of rations.', rel: 'neighbour', know: 'spoke', consent: 'agreed', name: 'Kamla Devi', age: '74', gender: 'woman', safety: 'no', status: 'reviewed', events: ev(['received', 20], ['reviewed', 18]) },
+      { id: 'ST-2043', zone: 'B', xy: [236, 74], who: ['alone'], help: ['water', 'welfare'], landmark: 'Blue house opposite the Lake Road bus stop', summary: 'Neighbours haven’t seen the elderly couple in two days. Their water drum is empty outside.', rel: 'bystander', know: 'saw', consent: 'unable', name: '', age: '', gender: '', safety: 'no', status: 'reviewed', events: ev(['received', 9], ['reviewed', 8]) },
+      { id: 'ST-2036', mine: true, example: true, zone: 'B', xy: [262, 120], who: ['essentials'], help: ['water'], landmark: 'Community tap, Lake Road', summary: 'Family of five without drinking water after the tap broke.', rel: 'neighbour', know: 'saw', consent: 'agreed', name: '', age: '', gender: '', safety: 'no', status: 'closed', outcome: 'delivered', helper: 'Imran', events: ev(['received', 96], ['reviewed', 94], ['assigned', 90], ['visited', 80], ['closed', 79]) },
+    ],
+  };
 }
-function languagePage(){return `<div class="card onboard"><div class="kicker">${L('WELCOME TO SAATH')}</div><h1>${L('Care starts<br>with understanding.')}</h1><p class="subtitle">${L('Choose the language you’re comfortable with. You can change it anytime.')}</p><div class="language-grid">${[['en','English','अंग्रेज़ी'],['hi','हिंदी','Hindi']].map(([v,n,s])=>`<button class="language-option ${db.prefs.lang===v?'selected':''}" data-action="language" data-lang="${v}" aria-pressed="${db.prefs.lang===v}">${db.prefs.lang===v?`<span class="checkmark">${I('check')}</span>`:''}<strong>${n}</strong><small>${s}</small></button>`).join('')}</div><div class="rule"></div><form id="language-form" class="form">${field('language-input',L('Or type your language'),'','text',`placeholder="English / हिंदी"`)}<div class="row"><button class="text-btn" type="submit">${I('globe')}${L('Detect language · demo')}</button>${textBtn(L('Speak your language'),'speak-language','','mic')}</div><p class="small muted">${L('English and Hindi supported. AI language detection is simulated; you confirm the choice.')}</p></form><div class="actions">${btn(L('Continue'),'go','wide','data-path="/roles"','arrow')}</div><p class="bottom-note">${L('Your language. Your pace. Together.')}</p></div>`;}
-function rolePage(){return `${heading(L('How are you joining?'),'/language')}<p class="muted small" style="margin-bottom:20px">${L('Two roles. One connected care network.')}</p><div class="stack"><button class="role-card" data-action="role" data-role="civilian"><span class="icon-tile green">${I('heart')}</span><div><h2>${L('I want to report a need')}</h2><p>${L('Civilian · Sign in with a phone number')}</p></div>${I('arrow')}</button><button class="role-card" data-action="role" data-role="volunteer"><span class="icon-tile">${I('shield')}</span><div><h2>${L('I’m a verified volunteer')}</h2><p>${L('Volunteer · Use your assigned ID')}</p></div>${I('arrow')}</button>${notice('',L('This demonstration uses fictional accounts. Please do not enter real personal or medical information.'))}</div>`;}
-function loginPage(){const vol=authRole==='volunteer';return `${heading(vol?L('Volunteer sign in'):L('Civilian sign in'),'/roles')}<div class="card"><span class="icon-tile ${vol?'':'green'}">${I(vol?'shield':'phone')}</span><h2 class="spaced">${vol?L('Your zone. Your team.'):otpStage?L('Confirm your demo code'):L('A small step toward care')}</h2><p class="form-caption">${vol?L('Use an assigned volunteer ID. Qualifications and task permissions are checked separately.'):L('Phone verification is simulated. No SMS is sent.')}</p>${loginError?notice('',esc(loginError),'red'):''}<form id="login-form" class="form">${vol?`${field('volunteer-id',L('Volunteer ID'),'SAATH-V101','text','required autocomplete="off"')}${field('volunteer-pin',L('Demo access code'),'','password','required inputmode="numeric" autocomplete="off"')}`:otpStage?field('otp',L('Six-digit demo code'),'','text','required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off"'):field('phone',L('Mobile number'),phone||'9000000001','tel','required inputmode="tel" pattern="[6-9][0-9]{9}" maxlength="10" autocomplete="off"',L('Use the fictional number shown for this demo.'))}<div class="demo-credential">${vol?`${L('Try Rohan')}: <code>SAATH-V101</code> · ${L('Code')}: <code>2468</code><br>${L('Medical scope')}: SAATH-V102 · ${L('Zone B')}: SAATH-V103`:otpStage?`${L('Demo OTP')}: <code>123456</code> · ${esc(phone)}`:L('Demo only · No real phone verification')}</div><button class="btn wide" type="submit">${vol?L('Enter volunteer workspace'):otpStage?L('Verify & continue'):L('Get demo code')}${I('arrow')}</button></form>${!vol?`${textBtn(otpStage?L('Change phone number'):L('Verification unavailable?'),otpStage?'change-phone':'unverified')}<p class="small muted">${L('Limited unverified reporting is available when verification cannot be completed.')}</p>`:''}</div>`;}
-function civilianHome(){
-  const own=M.visible(db),unsent=own.filter(c=>c.transport!=='ack').length;
-  return `<div class="home-intro">${intro(L('COMMUNITY CARE'),L('Someone needs you.'),L('Speak your mind. Tell us who needs care.'))}</div>${!db.session.verified?notice(L('Unverified reporting'),L('Your report will need coordinator review before any task is authorized.'),'amber'):''}${unsent?`<div class="spaced">${notice(L('Reports waiting on this device'),`${unsent} ${L('unsent. Open Reports to retry or explore the relay simulation.')}`,'amber','cloud')}</div>`:''}<section class="hero-report"><span class="voice-eyebrow">${L('A FIRST STEP TOWARD CARE')}</span><button class="orb report-orb" data-action="begin" data-mode="voice" aria-label="${L('Start voice report')}"><img class="report-symbol" src="assets/figma/report-symbol.svg" alt=""></button><h2>${L('Tap to tell us')}</h2><p>${L('Your voice becomes an editable report.')}</p><span class="voice-language">${I('globe')}${db.prefs.lang==='hi'?'हिंदी':'English'} · ${L('Change anytime')}</span></section>${btn(L('Enter details manually'),'begin','manual-button','data-mode="manual"','edit')}${db.drafts[db.session.account]?textBtn(L('Resume saved draft'),'resume','','folder'):''}<button class="safety-link" data-action="urgent">${I('warning')}<span><b>${L('Immediate danger?')}</b> ${L('See guidance before you report.')}</span>${I('arrow')}</button><div class="home-report-link"><div><span class="kicker">${L('YOUR CARE REQUESTS')}</span><h3>${own.length} ${L('reports · follow the care journey')}</h3></div>${textBtn(L('Your reports'),'go','data-path="/reports"','arrow')}</div><p class="bottom-note">${L('A report starts a request for care. It does not dispatch emergency help.')}</p>`;
+function seedChats(now) {
+  const m = (who, text, min, me = false) => ({ who, text, me, t: now - min * 60000 });
+  return {
+    meera: { kind: 'vol', name: 'Meera', unread: 1, msgs: [m('Meera', 'Picked up the insulin for ST-2042. Dropping it at gate 2 by 5.', 32), m('Meera', 'Can you check on Kamla Devi on Lane 4 tomorrow?', 14)] },
+    imran: { kind: 'vol', name: 'Imran', unread: 0, msgs: [m('Imran', 'Lake Road tap is fixed. Closing ST-2036.', 180), m('You', 'Great, thanks Imran!', 170, true)] },
+    sunita: { kind: 'vol', name: 'Sunita', unread: 0, msgs: [m('Sunita', 'Shanti School gate is locked after 6 pm. Use the side lane.', 1500)] },
+    zoneA: { kind: 'grp', name: 'Zone A volunteers', members: 12, unread: 2, msgs: [m('Arjun', 'Ration kits restocked at the ward care desk.', 55), m('Meera', 'Insulin pickup for ST-2042 is sorted.', 30)] },
+    medical: { kind: 'grp', name: 'Medical team', members: 5, unread: 0, msgs: [m('Dr. Rao', 'Shift handover at 8 pm today.', 240)] },
+    rations: { kind: 'grp', name: 'Food & rations', members: 9, unread: 0, msgs: [m('Arjun', 'Need two people for Saturday’s distribution.', 600)] },
+    desk: { kind: 'auth', name: 'Ward care desk', emoji: 'clipboard', unread: 1, msgs: [m('Ward care desk', 'A protected referral in Zone A is with the coordinator. No volunteer action needed.', 20)] },
+    ambulance: { kind: 'auth', name: 'Ambulance services', emoji: 'medical', unread: 0, msgs: [m('Ambulance services', 'For emergencies call 112. Non-urgent hospital transport needs 2 hours’ notice.', 900)] },
+    police: { kind: 'auth', name: 'Local police', emoji: 'siren', unread: 0, msgs: [m('Local police', 'Beat officer on Lake Road until 10 pm.', 120)] },
+    water: { kind: 'auth', name: 'Water supply dept', emoji: 'water', unread: 0, msgs: [m('Water supply dept', 'Tanker at the Lake Road bus stop, 4–6 pm.', 75)] },
+  };
 }
-function urgentBody(){return `<p>${L('If someone is in immediate danger, contact local emergency services directly using your phone or seek an available trusted local authority. Do not wait for a SAATH report.')}</p><div class="spaced">${notice(L('Protect yourself first'),L('Avoid entering unsafe places or performing care outside your training. For a child without a caregiver, seek an authorized child-protection pathway; do not arrange custody through volunteers.'),'red','shield')}</div><p class="small muted spaced">${L('This prototype makes no calls and contacts no responders. Service availability is not verified here.')}</p>`;}
-function safetyPage(){const d=draft();return `${heading(L('First, a quick safety check'),'/home')}<div class="card"><div class="step-label">${L('Step 1 of 3 · Before reporting')}</div><div class="step-track"><span class="active"></span><span></span><span></span></div><h2>${L('Is anyone in immediate danger?')}</h2><p class="form-caption">${L('Choose what you know right now. This does not send an alert.')}</p><div class="choice-list">${[['yes',L('Yes, there is immediate danger')],['no',L('No immediate danger observed')],['unsure',L('I’m not sure')]].map(([v,l])=>`<label class="choice"><input type="radio" name="danger" value="${v}" data-draft ${d.danger===v?'checked':''}><span>${l}</span></label>`).join('')}</div>${d.danger&&d.danger!=='no'?`<div class="spaced">${urgentBody()}</div>`:''}<div class="actions">${btn(L('Continue to report'),'safety-next','wide',d.danger?'':'disabled','arrow')}</div></div>${textBtn(L('Emergency guidance'),'urgent','','warning')}`;}
-function waveform(){return `<svg class="voice-contour" viewBox="0 0 400 160" preserveAspectRatio="none" aria-hidden="true"><path id="voice-contour" d="${contourPath(0)}"/></svg>`}
-function contourPath(level,bands=[]){
-  const points=[];
-  for(let x=60;x<=340;x+=20){let y=77;for(let j=0;j<5;j++){const center=100+j*49,amplitude=(j%2?17:10)+level*(12+(bands[j*9+3]||0)/6);y-=amplitude*Math.exp(-(((x-center)/19)**2))}points.push([x,y])}
-  let d='M0 160 C0 112 18 78 60 77';
-  for(let i=0;i<points.length-1;i++){const [x,y]=points[i],[nx,ny]=points[i+1];d+=` C${x+10} ${y} ${nx-10} ${ny} ${nx} ${ny}`}
-  return d+' C380 77 400 112 400 160 L400 162 L0 162 Z';
-}
-function voicePage(){
-  const busy=voiceStage==='requesting'||voiceStage==='finishing';
-  return `<div class="voice-heading"><h1 class="visually-hidden">${L('Report with your voice')}</h1><h2>${recording?L('We’re listening.'):L('Who needs care?')}</h2><p>${L('Speak your mind. Tell us what they need.')}</p></div><section class="voice-card ${recording?'recording':''}">${waveform()}<div class="voice-surface"><div class="capture-status"><span class="capture-dot"></span><span id="capture-state" role="status">${voiceStage==='requesting'?L('Allow microphone access'):voiceStage==='finishing'?L('Finishing transcript…'):recording?L('Microphone on'):L('Ready when you are')}</span><time id="voice-time">${Math.floor(voiceSeconds/60).toString().padStart(2,'0')}:${Math.floor(voiceSeconds%60).toString().padStart(2,'0')}</time></div><button class="orb microphone-orb" data-action="record" aria-pressed="${recording}" aria-label="${recording?L('Stop recording'):L('Start recording')}" ${voiceStage==='finishing'?'disabled':''}>${I(recording?'stop':'mic')}</button><h2 class="visually-hidden">${busy?L('One moment…'):recording?L('Tap to finish'):L('Tap to speak')}</h2><p class="voice-caption visually-hidden">${recording?L('The curved edge follows your sound.'):L('Your words. One step toward care.')}</p><div class="voice-language">${I('globe')}<span>${db.prefs.lang==='hi'?'हिंदी':'English'} · ${L('Selected language')}</span></div>${textBtn(L('Manual entry'),'go','data-path="/intake"','edit')}</div></section><div class="voice-followup"><p class="voice-feedback ${voiceNotice?'':'muted'}" id="voice-feedback" role="status">${esc(voiceNotice)||L('Allow the microphone when your browser asks. You’re in control.')}</p>${SaathVoice.clip?`<div class="audio-preview"><label for="voice-playback">${L('Listen to your recording')}</label><audio id="voice-playback" controls src="${SaathVoice.clip}"></audio><small>${L('Temporary audio · cleared when you leave this screen')}</small></div>`:''}<form id="voice-form" class="form transcript-form">${textarea('transcript',L('Your words · editable'),voiceText,`required maxlength="3000" ${recording&&voiceStage==='listening'?'readonly':''}`,L('Unknown details stay blank. Nothing is sent from this screen.'))}<div class="row">${textBtn(L('Try a demo description'),'voice-example')}${textBtn(L('Manual entry'),'go','data-path="/intake"')}</div><button class="btn wide" type="submit" ${recording?'disabled':''}>${L('Fill the form · simulated AI')}${I('arrow')}</button></form><details class="speech-details"><summary>${L('About voice & privacy')}</summary><p>${L('Speech capture depends on your browser and may use its online speech service. AI field extraction below is a local demonstration.')}</p><p>${L('Microphone audio is kept temporarily on this screen. It is not attached to your report.')}</p></details></div>`;
-}
-const selectionEmoji={criteria:{daily:'care',child:'child',medical:'medical',essentials:'essentials',unreachable:'home',other:'other'},needs:{food:'food',water:'water',supplies:'supplies',daily:'care',medication:'medication',welfare:'welfare',safeguarding:'safeguarding',other:'other'}};
-function emoji(name,cls=''){return `<img class="emoji-3d ${cls}" src="assets/emoji/${name}.png" alt="" width="40" height="40">`;}
-function selectionTabs(d){return `<div class="selection-tabs">${[['criteria',L('Criteria'),L('Who needs support?'),'care'],['needs',L('Help needed'),L('What help is needed?'),'essentials']].map(([key,title,description,symbol])=>`<button type="button" class="selector-tab ${formErrors.includes(key)?'invalid':''}" data-action="open-selection" data-field="${key}" aria-haspopup="dialog" aria-describedby="${key}-hint">${emoji(d[key].length?selectionEmoji[key][d[key][0]]:symbol)}<span><strong>${title}</strong><small>${d[key].length?`${d[key].length} ${L('selected')}`:description}</small></span>${I('plus')}</button>`).join('')}</div><div class="selection-hints">${[['criteria',L('Choose at least one category.')],['needs',L('Select a need, or Other / Not sure.')]].map(([key,error])=>`<div id="${key}-hint" class="${formErrors.includes(key)?'field-error':'selection-summary'}">${formErrors.includes(key)?error:d[key].length?d[key].map(x=>label(key==='criteria'?criteria():needs(),x)).map(esc).join(' · '):''}</div>`).join('')}</div>`;}
-function openSelection(field){
-  if(!['criteria','needs'].includes(field)||db.session?.role!=='civilian'||route()[0]!=='intake')return;
-  const items=field==='criteria'?criteria():needs(),d=draft();
-  showDialog(field==='criteria'?L('Who needs support?'):L('What help is needed?'),`<div class="sheet-tabs" role="group" aria-label="${L('Report categories')}">${[['criteria',L('Criteria')],['needs',L('Help needed')]].map(([key,title])=>`<button type="button" class="sheet-tab ${key===field?'active':''}" data-action="open-selection" data-field="${key}" aria-pressed="${key===field}">${title}<span data-selection-count="${key}">${d[key].length}</span></button>`).join('')}</div><p class="sheet-instruction">${field==='criteria'?L('Choose all that apply. This describes a stakeholder, not a diagnosis.'):L('Choose all the support they need. You can change these choices before reviewing.')}</p><fieldset class="selection-options"><legend class="visually-hidden">${field==='criteria'?L('Criteria · who needs support?'):L('What help is needed?')}</legend><div class="selection-grid">${items.map(([value,name])=>`<label class="selection-pill"><input type="checkbox" name="${field}" value="${value}" data-draft ${d[field].includes(value)?'checked':''}>${emoji(selectionEmoji[field][value])}<span>${name}</span><span class="selection-tick" aria-hidden="true">${I('check')}</span></label>`).join('')}</div></fieldset>${field==='criteria'?`<details class="category-explanations"><summary>${L('What do these categories mean?')}</summary>${items.map(([,name,hint])=>`<p><b>${name}</b><span>${hint}</span></p>`).join('')}</details>`:''}<div class="sheet-footer"><p><b id="selection-count">${d[field].length}</b> ${L('selected')}<small>${L('Saved to your draft. Nothing is sent.')}</small></p>${btn(L('Done'),'close-dialog','','','check')}</div>`);
-  const dialog=document.getElementById('dialog');dialog.classList.add('selection-sheet');dialog.dataset.selection=field;dialog.querySelector('input')?.focus({preventScroll:true});
+function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 3) return s; } catch {} return seed(); }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} }
+const blankDraft = () => ({ safety: '', who: [], help: [], landmark: '', zone: '', name: '', age: '', gender: '', rel: '', know: '', consent: '', notes: '', photo: '', fromVoice: false });
+
+let S = load(), timer = 0, toastT = 0, outcomePick = '';
+Object.assign(VOLS, S.newVols || {}); // volunteers approved through registration
+
+/* volunteer registration (step shape borrowed from Relay: basics → how you can help → trust) */
+const SKILLS = { supplies: ['Food and supplies', 'basket'], care: ['Daily care and check-ins', 'heart_hands'], transport: ['Transport and errands', 'package'], medical: ['Medical support', 'stethoscope'], child: ['Child protection', 'child'] };
+const AVAIL = { few: 'A few hours a week', most: 'Most days', calls: 'Only when called' };
+const DOCS = { aadhaar: 'Sample Aadhaar card', voter: 'Sample voter ID', licence: 'Sample driving licence' };
+const blankReg = () => ({ name: '', phone: '', zone: '', skills: [], avail: '', doc: '', agree: false, status: 'draft' });
+const t = s => (S.lang === 'hi' && HI[s]) || s;
+const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- sound ---------- */
+const SFX = {};
+function sfx(n) {
+  if (!S.sound || !n) return;
+  try {
+    const a = SFX[n] || (SFX[n] = new Audio(`sfx/${n}.mp3`));
+    a.volume = n === 'click' || n === 'soft' ? .45 : .6;
+    a.currentTime = 0;
+    a.play()?.catch(() => {});
+  } catch {}
 }
 
-function intakePage(){const d=draft(),context=d.criteria.some(x=>['child','medical','unreachable'].includes(x))||d.danger!=='no';return `${heading(L('Report details'),d.mode==='voice'?'/voice':'/safety')}<div class="card intake-card"><div class="step-label">${L('Step 2 of 3 · What you know')}</div><div class="step-track"><span class="active"></span><span class="active"></span><span></span></div>${errorSummary()}${d.mode==='voice'?notice(L('Drafted from your words · demo'),L('Review suggested categories. Add missing location, source and consent details. No age, name or condition has been invented.')):''}<form id="intake-form" class="form spaced" novalidate>${selectionTabs(d)}${field('name',L('Person’s name · optional'),d.name,'text','data-draft maxlength="80"',L('Leave blank if unknown.'))}<div class="input-grid">${field('age',L('Age · optional'),d.age,'text','data-draft inputmode="numeric" maxlength="3"')}${select('gender',L('Gender · optional'),[['woman',L('Woman / girl')],['man',L('Man / boy')],['other',L('Other / not stated')]],d.gender,'data-draft')}</div>${select('relation',L('Your relationship with this person'),relations(),d.relation,'data-draft')}${select('evidence',L('How do you know about the need?'),sources(),d.evidence,'data-draft')}${field('landmark',L('Location or clear landmark'),d.landmark,'text','data-draft maxlength="180"',L('A place a responder could identify. No location is auto-detected.'))}${select('zone',L('Ward zone'),[['A',L('Zone A · Shanti Nagar')],['B',L('Zone B · Lake Road')]],d.zone,'data-draft')}${select('subjectConsent',L('Permission to share their details'),consentOptions(),d.subjectConsent,'data-draft')}${d.subjectConsent&&d.subjectConsent!=='yes'?notice('',L('Share the minimum necessary information. Unknown or declined consent is visible to the response team; it is never assumed.'),'amber'):''}${context?`${notice(L('Additional safeguarding information'),d.criteria.includes('child')?L('Child-related reports use a protected referral. General volunteers cannot accept custody or safeguarding tasks.'):L('Describe immediate concerns and what remains unknown. Qualified review may be needed.'),'amber','shield')}${textarea('context',L('Safety context · required'),d.context,'data-draft maxlength="800"',L('For example: responsible adult unavailable; current safety unknown. Do not guess.'))}`:''}${textarea('notes',L('Anything else the team should know?'),d.notes,'data-draft maxlength="3000"',L('Record observations, not diagnoses. Photos and raw audio are not collected.'))}<button class="btn wide" type="submit">${L('Review report')}${I('arrow')}</button>${btn(L('Save draft & finish later'),'save-draft','outline wide')}</form></div>${textBtn(L('Emergency guidance'),'urgent','','warning')}`;}
-function reviewItems(d){return `<dl class="review-grid"><div class="review-item full"><dt>${L('Criteria')}</dt><dd>${d.criteria.map(x=>label(criteria(),x)).map(esc).join('<br>')}</dd></div><div class="review-item full"><dt>${L('Reported needs')}</dt><dd>${d.needs.map(x=>label(needs(),x)).map(esc).join(' · ')}</dd></div>${[[L('Name'),d.name],[L('Age'),d.age],[L('Relationship'),label(relations(),d.relation)],[L('Information source'),label(sources(),d.evidence)],[L('Permission'),label(consentOptions(),d.subjectConsent)],[L('Zone'),d.zone]].map(([l,v])=>`<div class="review-item"><dt>${l}</dt><dd class="${v?'':'unknown'}">${esc(v)||L('Unknown / not provided')}</dd></div>`).join('')}<div class="review-item full"><dt>${L('Location / landmark')}</dt><dd>${esc(d.landmark)}</dd></div>${d.context?`<div class="review-item full"><dt>${L('Safety context')}</dt><dd>${esc(d.context)}</dd></div>`:''}${d.notes?`<div class="review-item full"><dt>${L('Notes')}</dt><dd>${esc(d.notes)}</dd></div>`:''}</dl>`;}
-function reviewPage(){const d=draft();return `${heading(L('Check before you share'),'/intake')}<div class="card"><div class="step-label">${L('Step 3 of 3 · Your confirmation')}</div><div class="step-track"><span class="active"></span><span class="active"></span><span class="active"></span></div><div class="row"><h2>${L('Your report')}</h2>${textBtn(L('Edit details'),'go','data-path="/intake"','edit')}</div>${reviewItems(d)}<div class="rule"></div>${notice(L('Who can see this?'),L('In this demo, your zone sees a limited summary. Assigned, authorized volunteers can see necessary details. All data stays in this browser.'),'','lock')}<form id="review-form" class="form spaced"><label class="check-label"><input type="checkbox" name="confirm" required><span>${L('I have reviewed this report. It reflects what I know, and I agree to share the minimum necessary details for this care request.')}</span></label><button type="submit" class="btn wide">${M.online(db)?L('Confirm & submit report'):L('Confirm & save to unsent queue')}${I(M.online(db)?'send':'cloud')}</button><p class="small muted">${M.online(db)?L('The next receipt is simulated. No real responder is contacted.'):L('You are offline or in failure mode. The report will remain on this device until a simulated acknowledgement.')}</p></form></div>`;}
-function receiptPage(id){const c=M.record(db,id),ack=c.transport==='ack';return `<div class="card"><div class="success-head ${ack?'':'amber'}"><div class="success-symbol">${I(ack?'check':'cloud')}</div><div class="kicker">${ack?L('DEMO RECEIPT'):L('SAVED ON THIS DEVICE')}</div><h1 class="spaced">${ack?L('A first step toward care.'):L('Saved. Still not sent.')}</h1><p>${ack?L('The simulated receiver has acknowledged your report. It is awaiting review or an authorized volunteer’s acceptance.'):L('Your report is stored here. The response team has not received it. Keep this browser data until acknowledgement.')}</p><div class="case-number">${esc(c.id)}</div>${pill(transportName(c.transport),colors(c.transport))}</div><div class="stack">${btn(L('Track this report'),'go','wide',`data-path="/case/${c.id}"`,'arrow')}${!ack?btn(L('Explore relay simulation'),'go','outline wide',`data-path="/relay/${c.id}"`,'relay'):''}${notice('',L('Receipt is not a promise of arrival or a confirmation that the person is safe.'))}</div></div>${textBtn(L('Back to home'),'go','data-path="/home"')}`;}
-function caseTitle(c){return c.criteria.includes('child')?L('Protected care referral'):c.criteria.includes('medical')?L('Medical access & care'):c.criteria.includes('daily')?L('Everyday care & essentials'):c.criteria.includes('unreachable')?L('Welfare concern'):L('Essential support needed');}
-function caseCard(c){
-  const detail=M.sensitive(db,c),tone=c.transport!=='ack'?'unsent':c.priority==='critical'?'critical':c.priority==='high'?'priority':'routine';
-  return `<button class="card case-card report-row urgency-${tone}" data-urgency="${tone}" data-action="go" data-path="/case/${c.id}"><span class="report-avatar" aria-hidden="true">${I(detail?'person':'lock')}</span><span class="report-copy"><span class="case-id">${esc(c.id)} · ${L('Zone')} ${esc(c.zone)}</span><h3>${detail&&c.name?esc(c.name):caseTitle(c)}</h3><span class="report-meta">${detail&&c.age?`${L('Age')} · ${esc(c.age)} · `:''}${c.transport==='ack'?careName(c.care):transportName(c.transport)}</span></span><span class="report-priority"><span class="urgency-dot"></span>${tone==='unsent'?L('NOT SENT'):priority(c.priority)}${I('arrow')}</span></button>`;
+/* ---------- helpers ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const I = {
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>', back: '<path d="M19 12H5M11 6l-6 6 6 6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+  home: '<path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/>', list: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
+  book: '<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19"/>', check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>', chev: '<path d="M9 6l6 6-6 6"/>',
+  pen: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>', phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+  sound: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+  mute: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  minus: '<path d="M5 12h14"/>',
+  expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
+  locate: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  chat: '<path d="M5 5h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H10l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
+  send: '<path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
+  up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+  wifioff: '<path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0M12 19h.01M3 3l18 18"/>',
+};
+const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${I[n]}</svg>`;
+const em = n => `<img class="emo" src="emoji/${n}.png" alt="" aria-hidden="true" draggable="false">`;
+const btn = (label, attrs = '', { v = 'filled', icon = '', trail = false } = {}) =>
+  `<button class="btn ${v}" ${attrs}>${icon && !trail ? ic(icon) : ''}<span>${label}</span>${icon && trail ? ic(icon) : ''}</button>`;
+const orb = (emoji, cls = '', size = 168) => `<span class="liquid ${cls}" style="--s:${size}px" aria-hidden="true"><span class="ring"></span><span class="ring r2"></span><span class="ring r3"></span><span class="blob"></span><span class="blob b2"></span><span class="gloss"></span>${em(emoji)}</span>`;
+const byId = id => S.cases.find(c => c.id === id);
+const me = () => VOLS[S.user?.vid];
+function ago(ts) {
+  const rtf = new Intl.RelativeTimeFormat(S.lang === 'hi' ? 'hi' : 'en', { numeric: 'auto' });
+  const m = Math.round((ts - Date.now()) / 60000);
+  if (m > -60) return rtf.format(m, 'minute');
+  const h = Math.round(m / 60);
+  return h > -24 ? rtf.format(h, 'hour') : rtf.format(Math.round(h / 24), 'day');
 }
-function urgencyLegend(){return `<div class="urgency-legend" aria-label="${L('Reported urgency')}" role="note"><span><i class="red"></i>${L('Urgent review')}</span><span><i class="amber"></i>${L('Priority review')}</span><span><i class="green"></i>${L('Routine')}</span></div><p class="urgency-explainer">${L('Reported urgency is not a safety assessment. Open a report for its care and delivery status.')}</p>`;}
-function empty(title,body){return `<div class="card list-empty">${I('folder')}<h2 class="empty-title">${title}</h2><p>${body}</p></div>`;}
-function reportsPage(){const own=M.visible(db),d=db.drafts[db.session.account];return `<div class="reports-heading">${intro(L('YOUR CARE REQUESTS'),L('Every report. Every next step.'),L('Follow the care you helped set in motion.'))}</div>${urgencyLegend()}${d?`<div class="draft-row"><div>${I('edit')}<span><b>${L('Unfinished report')}</b><small>${L('Saved locally · not submitted')}</small></span></div>${btn(L('Resume'),'resume','compact')}${textBtn(L('Discard draft'),'discard-draft')}</div>`:''}<div class="stack report-list">${own.length?own.map(caseCard).join(''):empty(L('Your first report starts here'),L('Reports you submit from this account will appear here.'))}</div>${btn(L('Report another need'),'begin','outline wide spaced','data-mode="voice"','plus')}`;}
-function overviewPage(){const v=M.volunteer(db),cases=M.visible(db),own=cases.flatMap(c=>c.tasks).filter(t=>t.owner===v.id&&['accepted','in-progress'].includes(t.status)),pending=db.pending.filter(p=>p.actor===v.id),available=cases.flatMap(c=>c.tasks.map(t=>({c,t}))).filter(x=>!M.eligibility(db,x.c,x.t));return `${intro(L('VOLUNTEER WORKSPACE'),L('Good to have you, Rohan.').replace(/Rohan|रोहन/,esc(v.name.split(' ')[0])),L('Your next small action can keep someone’s care going.'))}<section class="hero-overview"><div class="row">${pill(`${L('Assigned zone')} ${v.zone}`,'green','pin')}${pill(L('Verified · demo'),'neutral','shield')}</div><h1>${L('Care starts with<br>your next step.')}</h1><p>${L('See the need. Check your scope. Help with a clear next step.')}</p><div class="stats"><div class="stat"><strong>${cases.length.toString().padStart(2,'0')}</strong><span>${L('Zone cases')}</span></div><div class="stat"><strong>${own.length.toString().padStart(2,'0')}</strong><span>${L('Your active tasks')}</span></div><div class="stat"><strong>${available.length.toString().padStart(2,'0')}</strong><span>${L('Eligible tasks')}</span></div></div></section>${pending.length?`<div class="spaced">${notice(L('Field notes waiting to sync'),`${pending.length} ${L('local updates are NOT SENT. Civilian status has not changed.')}`,'amber','cloud')}</div>`:''}<div class="bento spaced"><button class="quick-card" data-action="go" data-path="/cases"><span class="icon-tile">${I('checklist')}</span><h3>${L('Respond to a need')}</h3><p>${L('Review zone cases & eligible tasks')}</p></button><button class="quick-card" data-action="go" data-path="/chats"><span class="icon-tile green">${I('chat')}</span><h3>${L('Stay connected')}</h3><p>${L('Team, coordinator & case chats')}</p></button></div><div class="section-title"><h2>${L('Needs your attention')}</h2>${textBtn(L('All cases'),'go','data-path="/cases"','arrow')}</div><div class="stack">${cases.slice(0,2).map(caseCard).join('')}</div><div class="section-title"><h2>${L('Your neighbourhood')}</h2>${textBtn(L('Zone map'),'go','data-path="/map"','arrow')}</div><button class="map-button" data-action="go" data-path="/map" aria-label="${L('Open zone reference map')}">${zoneMap(v.zone)}</button><div class="bento spaced"><button class="quick-card" data-action="go" data-path="/team"><span class="icon-tile green">${I('people')}</span><h3>${L('Meet your team')}</h3><p>${L('People, qualifications & permissions')}</p></button><button class="quick-card" data-action="go" data-path="/guides"><span class="icon-tile">${I('book')}</span><h3>${L('Field guides')}</h3><p>${L('Safety, consent & careful reporting')}</p></button></div>`;}
-function casesPage(){let cases=M.visible(db);if(currentFilter==='mine')cases=cases.filter(c=>c.tasks.some(t=>t.owner===db.session.account));if(currentFilter==='available')cases=cases.filter(c=>c.tasks.some(t=>!M.eligibility(db,c,t)));if(currentFilter==='followup')cases=cases.filter(c=>c.followUp||c.care==='followup');if(search)cases=cases.filter(c=>(c.id+' '+caseTitle(c)).toLowerCase().includes(search.toLowerCase()));return `${intro(`${L('ZONE')} ${M.volunteer(db).zone}`,L('Care in your zone'),L('Limited summaries are visible here. Details unlock only after an authorized task is accepted.'))}<div class="search-wrap">${I('search')}<input id="case-search" aria-label="${L('Search cases')}" placeholder="${L('Search by case ID or need')}" value="${esc(search)}"></div><div class="filters">${[['all',L('All cases')],['available',L('Eligible')],['mine',L('My tasks')],['followup',L('Follow-up')]].map(([v,l])=>`<button class="filter ${currentFilter===v?'active':''}" data-action="filter" data-value="${v}" aria-pressed="${currentFilter===v}">${l}</button>`).join('')}</div><div id="case-results" class="stack">${cases.length?cases.map(caseCard).join(''):empty(L('No matching cases'),L('Try another filter. Cases outside your assigned zone are not shown.'))}</div>`;}
-function eventText(e){return ({received:L('Report received · demo acknowledgement'),unsent:L('Report saved · NOT SENT'),acknowledged:L('Alert acknowledged by volunteer'),accepted:L('Task explicitly accepted'),check:L('Welfare check recorded'),outcome:L('Assistance outcome recorded'),escalated:L('Coordinator escalation recorded · demo'),peer:L('Copy shared with simulated peer'),expired:L('Temporary relay copy expired'),'relay-failed':L('Relay failed · original report retained'),conflict:L('Conflicting update preserved for review'),'remote-update':L('Separate coordinator update · simulation'),handoff:L('Continuing-care responsibility accepted · demo')})[e.kind]||e.kind;}
-const contactName=s=>({reached:L('Person reached'),'no-answer':L('No answer · welfare unknown'),unsafe:L('Unsafe to approach'),declined:L('Person declined contact')})[s]||s;
-const confirmationName=s=>({confirmed:L('Recipient / authorized observer confirmed'),unconfirmed:L('Recorded · receipt unconfirmed'),partial:L('Partially fulfilled'),'not-fulfilled':L('Not fulfilled')})[s]||s;
-function timeline(c){return `<ol class="timeline">${c.events.slice().reverse().map(e=>`<li><h3>${eventText(e)}</h3><time>${time(e.at)} · ${esc(e.actor)}</time>${e.kind==='check'?`<p>${contactName(e.detail.contact)}</p><p class="detail">${esc(e.detail.note)}</p>`:e.kind==='outcome'?`<p>${confirmationName(e.detail.confirmation)}</p><p class="detail">${esc(e.detail.note)}</p>`:e.kind==='escalated'?`<p>${esc(contactName(e.detail))}</p>`:e.kind==='accepted'?`<p>${taskName(e.detail)}</p>`:e.kind==='conflict'?`<p>${L('Both records retained. No local outcome silently replaced the accepted history.')}</p>`:''}</li>`).join('')||`<li><h3>${L('Fictional demonstration case')}</h3><p>${L('Awaiting an authorized response.')}</p></li>`}</ol>`;}
-function casePage(id){const c=M.record(db,id),v=M.volunteer(db),detail=M.sensitive(db,c),pending=db.pending.filter(p=>p.caseId===id&&p.actor===db.session.account);return `${heading(L('Care case'),v?'/cases':'/reports')}<div class="stack"><div class="card"><div class="row"><span class="kicker">${esc(c.id)}</span>${pill(priority(c.priority),colors(c.priority))}</div><h2 class="spaced">${caseTitle(c)}</h2><p class="small muted spaced">${L('Zone')} ${c.zone} · ${L('Fictional Kanpur ward')}</p><div class="status-grid spaced"><div class="status-box"><small>${L('Delivery')}</small><strong>${transportName(c.transport)}</strong></div><div class="status-box"><small>${L('Care case')}</small><strong>${careName(c.care)}</strong></div><div class="status-box"><small>${L('Verification')}</small><strong>${verifyName(c.verification)}</strong></div><div class="status-box"><small>${L('Task progress')}</small><strong>${c.tasks.filter(t=>t.status==='completed').length} / ${c.tasks.length} ${L('confirmed')}</strong></div></div>${v&&!c.ackBy.includes(v.id)?btn(L('Acknowledge alert'),'ack','outline wide spaced',`data-id="${c.id}"`,'bell'):''}${v?`<p class="small muted spaced">${L('Acknowledging means you have seen the alert. It does not accept a task.')}</p>`:''}</div>${c.conflict?notice(L('Conflict · coordinator review required'),L('Both updates are preserved in the event history. No task is reassigned or closed automatically.'),'red','flag'):''}${pending.length?`<div class="card"><h3>${L('Local field note · NOT SENT')}</h3><p class="small muted spaced">${esc(pending[0].payload.note)}</p><p class="small muted spaced">${L('Civilian tracking still shows the last acknowledged state.')}</p><div class="actions">${btn(L('Sync now'),'sync','compact')}${btn(L('Simulate conflicting update'),'conflict','outline compact',`data-id="${id}"`)}</div></div>`:''}${!v&&c.transport!=='ack'?`<div class="card">${notice(L('This request has not reached the response team'),L('A peer copy is not a server receipt. Retry or explore the relay demonstration.'),'amber','cloud')}<div class="actions">${btn(L('Retry delivery'),'retry','',`data-id="${id}"`,'refresh')}${btn(L('Relay demo'),'go','outline',`data-path="/relay/${id}"`,'relay')}</div></div>`:''}<div class="card"><h2>${detail?L('Reported information'):L('Privacy-protected summary')}</h2>${detail?reviewItems(c):`<p class="form-caption">${L('Personal details and the precise landmark are hidden until an eligible assignment.')}</p><div class="pill-row">${c.criteria.includes('child')?pill(L('Protected specialist referral'),'amber','shield'):c.needs.filter(n=>['food','water','welfare','supplies'].includes(n)).map(n=>pill(label(needs(),n))).join('')||pill(L('Authorized review needed'),'amber')}</div><div class="case-privacy">${I('lock')}${L('Minimum necessary information')}</div>`}</div>${c.followUp?`<div class="card" style="background:linear-gradient(130deg,#fffdf7,#fbf1d9)"><div class="row"><span class="icon-tile amber">${I('heart')}</span>${pill(L('Care Relay'),'amber')}</div><h2 class="spaced">${L('Care continues beyond this task')}</h2><p class="form-caption">${detail?esc(c.followUp.note):L('Continuing-care details are restricted to assigned responders.')}</p><div class="status-grid"><div class="status-box"><small>${L('Case owner · demo')}</small><strong>${L('Ward response team')}</strong></div><div class="status-box"><small>${L('Next check due')}</small><strong>${time(c.followUp.due)}</strong></div></div><p class="small spaced">${c.followUp.status==='responsibility-confirmed'?L('Response team responsibility confirmed in the simulation. Open follow-up tasks still need a volunteer.'):L('Next task remains unclaimed in the eligible zone pool. No arrival is promised.')}</p>${v&&detail&&c.followUp.status!=='responsibility-confirmed'?btn(L('Simulate coordinator handoff acknowledgement'),'handoff','outline wide spaced',`data-id="${id}"`):''}</div>`:''}<div class="card"><h2>${L('Tasks & appropriate help')}</h2><p class="form-caption">${L('Task completion and overall care resolution are separate.')}</p>${c.tasks.map(t=>taskView(c,t,v)).join('')}${v?btn(L('Request coordinator / qualified help'),'escalate','outline wide spaced',`data-id="${id}"`,'flag'):''}</div><div class="card"><h2 style="margin-bottom:22px">${L('Care timeline')}</h2>${timeline(c)}</div>${v&&detail?btn(L('Open case conversation'),'go','outline wide',`data-path="/chat/case-${id}"`,'chat'):''}</div>`;}
-function taskView(c,t,v){const reason=v?M.eligibility(db,c,t):'',mine=v&&t.owner===v.id;const reasons={approval:L('Requires specific coordinator authorization.'),qualification:L('Outside your verified task permissions.'),offline:L('New tasks cannot be accepted offline.'),conflict:L('Paused for coordinator conflict review.')};return `<div class="task"><div class="row"><h3>${taskName(t.type)}${t.followup?` · ${L('Follow-up')}`:''}</h3>${pill(taskStatus(t.status),colors(t.status))}</div>${t.owner?`<p>${L('Assigned to')}: ${esc(M.roster.find(v=>v.id===t.owner)?.name||t.owner)}</p>`:`<p>${L('No volunteer assigned')}</p>`}${t.followup?`<p>${L('Due')}: ${time(t.due)}${Date.parse(t.due)<Date.now()?` · ${L('Overdue · team review needed')}`:''}</p>`:''}${t.outcome?`<p>${confirmationName(t.outcome.confirmation)}</p>`:''}${v&&t.status==='available'?`${reason?`<p>${I('lock')} ${reasons[reason]||L('Task unavailable for this account.')}</p>`:''}${btn(reason?L('Not eligible to accept'):L('Accept this task'),'accept',reason?'outline':'',`data-id="${c.id}" data-task="${t.id}" ${reason?'disabled':''}`,'shield')}`:''}${mine&&['accepted','in-progress'].includes(t.status)?`${btn(t.status==='accepted'?L('Start welfare check'):L('Record assistance outcome'),'go','wide',`data-path="/${t.status==='accepted'?'check':'outcome'}/${c.id}/${t.id}"`,'arrow')}`:''}</div>`;}
-function assigned(id,tid){const c=M.record(db,id),v=M.volunteer(db),t=c.tasks.find(t=>t.id===tid);if(!v||t?.owner!==v.id||!M.sensitive(db,c))throw Error('access');return {c,t,v};}
-function checkPage(id,tid){const {c,t}=assigned(id,tid);if(!['accepted','in-progress'].includes(t.status))throw Error('access');const data=fieldDraft[tid]||{};return `${heading(L('A careful welfare check'),`/case/${id}`)}<div class="card"><div class="kicker">${esc(c.id)} · ${taskName(t.type)}</div><h2 class="spaced">${L('Observe. Ask. Record.')}</h2><p class="form-caption">${L('Only record what you observed. Contact does not confirm medical wellbeing.')}</p>${notice('',L('Check your own safety and the person’s willingness before offering help. You may stop or escalate at any time.'),'','shield')}<form id="check-form" class="form spaced" data-id="${id}" data-task="${tid}">${select('contact',L('What happened when you approached?'),[['reached',contactName('reached')],['no-answer',contactName('no-answer')],['unsafe',contactName('unsafe')],['declined',contactName('declined')]],data.contact||'','required data-field')}${select('consent',L('Did they agree to receive assistance?'),[['yes',L('Yes, explicit agreement')],['no',L('No, declined')],['unknown',L('Not established / unable to ask')]],data.consent||'','required data-field')}${textarea('note',L('Observations & limitations'),data.note||'','required maxlength="1200" data-field',L('What did you directly see or hear? What remains unknown?'))}${notice(L('No answer never means safe'),L('No answer, an unsafe scene, or declined / unknown consent records a coordinator escalation in the demo. It never dispatches help automatically.'),'amber')}<button type="submit" class="btn wide">${M.online(db)?L('Save welfare check'):L('Save check locally · NOT SENT')}${I('check')}</button></form></div>`;}
-function outcomePage(id,tid){const {c,t}=assigned(id,tid);if(t.status!=='in-progress'||t.contact!=='reached'||t.consent!=='yes')throw Error('access');const data=fieldDraft[tid]||{},due=data.due||new Date(Date.now()+86400000-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);return `${heading(L('Record the outcome'),`/case/${id}`)}<div class="card"><div class="kicker">${esc(c.id)} · ${taskName(t.type)}</div><h2 class="spaced">${L('What changed for this person?')}</h2><p class="form-caption">${L('Record assistance within your assigned scope. Recording help does not automatically resolve a care case.')}</p><form id="outcome-form" class="form" data-id="${id}" data-task="${tid}">${textarea('note',L('Assistance provided & remaining needs'),data.note||'','required maxlength="1200" data-field',L('Include what was actually done, not what was promised.'))}${select('confirmation',L('Who confirmed receipt of assistance?'),[['confirmed',confirmationName('confirmed')],['unconfirmed',confirmationName('unconfirmed')],['partial',confirmationName('partial')],['not-fulfilled',confirmationName('not-fulfilled')]],data.confirmation||'','required data-field')}<label class="check-label"><input type="checkbox" name="recurring" data-field ${data.recurring!==false?'checked':''}><span><b>${L('Continuing care is required')}</b><br>${L('Keep the case open and create a follow-up task.')}</span></label>${field('due',L('Next check due'),due,'datetime-local','data-field')}${textarea('next',L('Next care action'),data.next||'','maxlength="600" data-field',L('Required if continuing care is selected. The response team owns the handoff; the next volunteer task remains unclaimed.'))}<button class="btn wide" type="submit">${M.online(db)?L('Save outcome & next step'):L('Save outcome locally · NOT SENT')}${I('check')}</button></form></div>`;}
-function relayPage(id){const c=M.record(db,id),copy=db.relay.find(p=>p.caseId===id),acked=c.transport==='ack';return `${heading(L('A path when signal is lost'),`/case/${id}`)}<div class="card"><div class="row"><span class="icon-tile">${I('relay')}</span>${pill(L('INTERACTIVE SIMULATION'),'amber')}</div><h2 class="spaced">${L('Store. Carry. Forward.')}</h2><p class="form-caption">${L('Explore how an opt-in nearby relay could carry a report. No Bluetooth connection or real encryption occurs here.')}</p><div class="relay-flow"><div class="relay-node active">${I('phone')}${L('Your device')}<span>${L('Original retained')}</span></div>${I('arrow')}<div class="relay-node ${copy?'pending':''}">${I('relay')}${L('Nearby device 02')}<span>${copy?L('Temporary copy'):L('No copy')}</span></div>${I('arrow')}<div class="relay-node ${acked?'active':''}">${I('cloud')}${L('Demo receiver')}<span>${acked?L('Acknowledged'):L('Not received')}</span></div></div>${notice(transportName(c.transport),L('A peer copy does not mean SAATH received your report. The original stays on your device.'),acked?'green':'amber')}<div class="subtle-box spaced"><p class="small"><b>${L('Encrypted envelope · concept only')}</b><br>${L('Peers would relay an unreadable payload, not view case details. This demo stores ordinary local browser data.')}</p><p class="small spaced">${L('Stable report ID')}: ${esc(c.id)}<br>${copy?`${L('Temporary copy expires')}: ${time(copy.expires)}`:L('Copies expire after one demo hour, or are removed after acknowledgement.')}</p></div><div class="stack spaced">${!acked?`${btn(copy?L('Share same ID again · dedup test'):L('Opt in & share a simulated copy'),'relay-share','wide',`data-id="${id}"`,'relay')}${copy?`${btn(L('Simulate connected gateway & receipt'),'relay-gateway','green wide',`data-id="${id}"`,'cloud')}<div class="actions">${btn(L('Peer fails'),'relay-fail','outline compact',`data-id="${id}"`)}${btn(L('Advance to expiry'),'relay-expire','outline compact',`data-id="${id}"`)}</div>`:''}`:`${btn(L('Replay acknowledgement · dedup test'),'relay-gateway','outline wide',`data-id="${id}"`)}<p class="small muted">${L('Temporary peer copies have been cleaned up. The case and audit history remain.')}</p>`}${btn(L('Return to report'),'go','outline wide',`data-path="/case/${id}"`)}</div></div>`;}
-function zoneMap(active='A'){return `<svg class="map" viewBox="0 0 600 300" role="img" aria-label="${L('Fictional ward zones A and B, community library, school and care desk')}"><defs><pattern id="blocks" width="50" height="45" patternUnits="userSpaceOnUse"><rect x="5" y="5" width="33" height="27" rx="4" fill="#e0e6d9"/></pattern></defs><rect width="600" height="300" fill="#eff3e8"/><rect width="600" height="300" fill="url(#blocks)"/><path d="M430-20C350 80 510 160 410 320" stroke="#c1ddeb" stroke-width="45" fill="none"/><path d="M-10 170 650 100M130-10 210 320M330-10 265 320" stroke="#fff" stroke-width="18"/><path d="M40 42 270 25 280 123 245 255 72 262 40 190Z" fill="#a3cdb575" stroke="${active==='A'?'#30866a':'#91b5a0'}" stroke-width="3" stroke-dasharray="7 5"/><path d="M310 30 545 35 553 250 300 255 318 160Z" fill="#b5cfe55a" stroke="${active==='B'?'#2776b5':'#9cb7ca'}" stroke-width="3" stroke-dasharray="7 5"/><text x="70" y="80" fill="#3d7054" font-size="24" font-weight="600">${L('Zone A')}</text><text x="470" y="80" fill="#41718b" font-size="24" font-weight="600">${L('Zone B')}</text><g fill="#fff" stroke="#6b9885" stroke-width="2"><circle cx="110" cy="150" r="10"/><circle cx="225" cy="215" r="10"/><circle cx="345" cy="190" r="10"/></g><g fill="#3e6653" font-size="12"><text x="60" y="178">${L('Community library')}</text><text x="174" y="243">${L('Ward care desk')}</text><text x="330" y="218">${L('Shanti School')}</text></g><text x="20" y="285" fill="#5e7467" font-size="10">${L('ILLUSTRATIVE · NOT FOR NAVIGATION')}</text><path d="m570 20 5 13h-10Z" fill="#566e62"/><text x="570" y="47" text-anchor="middle" font-size="10" fill="#566e62">N</text></svg>`;}
-function mapPage(){const v=M.volunteer(db);return `${heading(L('Know your zone'))}${intro(L('GEOGRAPHICAL REFERENCE'),`${L('Your assignment: Zone')} ${v.zone}`,L('A fictional ward reference. No live location, routing or responder tracking.'))}<div class="filters">${['A','B'].map(z=>`<button class="filter ${selectedZone===z?'active':''}" data-action="zone" data-zone="${z}">${L('Zone')} ${z}${z===v.zone?` · ${L('assigned')}`:''}</button>`).join('')}</div>${zoneMap(selectedZone)}<div class="card spaced"><h2>${selectedZone==='A'?L('Shanti Nagar'):L('Lake Road')}</h2><p class="form-caption">${selectedZone===v.zone?L('Your team responds to authorized tasks in this zone. Use Cases for assignments.'):L('Neighbouring zone · reference only. Its cases and personal details are not accessible from your account.')}</p>${btn(L('View my zone cases'),'go','wide','data-path="/cases"','folder')}</div>`;}
-function teamPage(){return `${heading(L('People behind the care'))}<div class="row" style="margin-bottom:18px"><p class="small muted">${L('Fictional verified roster')}</p>${textBtn(L('About badges'),'badges','','info')}</div><div class="stack">${M.roster.map(v=>`<div class="card"><div class="profile"><div class="avatar ${v.color}">${v.initials}</div><div><h3>${esc(v.name)}</h3><p>${L('Zone')} ${v.zone} · ${esc(v.id)}</p></div></div><div class="badge-icons">${v.badges.map(b=>pill(badgeName(b),'green','shield')).join('')}</div><p class="profile-note">${L('Task permissions')}: ${v.permissions.map(taskName).join(' · ')}</p></div>`).join('')}</div><div class="spaced">${notice(L('A badge is not unlimited authority'),L('Acceptance depends on the assigned zone, task authorization and verified permissions. Child protection is a restricted referral, never a volunteer custody task.'),'','shield')}</div>`;}
-function guides(){return [
-  {id:'danger',icon:'warning',color:'red',title:L('Immediate danger'),sub:L('When a report cannot wait'),steps:[L('Contact local emergency services directly using a working phone, or approach an available trusted local authority. This app does not contact them.'),L('Avoid unsafe places and actions beyond your training. Do not delay direct help while completing this report.'),L('If you still choose to report, state the immediate concern, known location and what has not been verified.')]},
-  {id:'care',icon:'heart',color:'green',title:L('Someone’s caregiver is missing'),sub:L('Notice needs without making assumptions'),steps:[L('Ask what support the person wants, if it is safe to approach. A person’s age or disability does not by itself establish dependence.'),L('Report observed needs such as food, water or daily support. Leave unknown identity and health details blank.'),L('Record what still needs follow-up after today’s assistance. A single completed task does not establish continuing care.')]},
-  {id:'child',icon:'shield',color:'amber',title:L('A child without a caregiver'),sub:L('Use a protected referral pathway'),steps:[L('Use the protected child-related report category and state what is known about the responsible adult. Do not invent consent or identity.'),L('Seek appropriate authorized child-protection or emergency assistance directly. SAATH does not determine custody or arrange placement.'),L('Do not share a child’s identifying details in group chats or public zone summaries.')]},
-  {id:'medical',icon:'plus',color:'blue',title:L('Medication & medical needs'),sub:L('Connect to qualified assistance'),steps:[L('Describe the request in the person’s own words. Do not diagnose a condition or suggest a dose.'),L('A general volunteer may record a permitted welfare check or basic delivery. Clinical actions require separately verified scope and task authorization.'),L('Uncertain or urgent medical needs should be referred to qualified services. The prototype provides no medical treatment or triage.')]},
-  {id:'offline',icon:'cloud',color:'amber',title:L('Reporting without a connection'),sub:L('Know what has—and has not—been sent'),steps:[L('Save the report locally. The words NOT SENT mean the response team has no acknowledged copy.'),L('A simulated peer copy also has uncertain delivery. Keep the original until the demo receiver acknowledges it.'),L('Reconnect in Demo controls and retry. Do not clear browser data while unsent reports or field notes remain.')]},
-  {id:'welfare',icon:'checklist',color:'green',title:L('A respectful welfare check'),sub:L('Consent, observation & careful follow-up'),steps:[L('Accept only a task permitted for your verified role and zone. Acknowledging an alert does not accept a task.'),L('Ask permission before assistance. Record reached, no answer, unsafe, or declined as distinct outcomes.'),L('If no contact is made, welfare remains unknown. Escalate for review; never mark the person safe merely because the visit ended.')]}
-];}
-function guidesPage(){const items=guides().filter(g=>(g.id+' '+g.title+' '+g.sub).toLowerCase().includes(guideQuery.toLowerCase()));return `${heading(L('A little guidance helps'),db.session?home():'/language')}<p class="form-caption">${L('Available offline · SAATH project guidance, not clinical instructions')}</p><div class="search-wrap">${I('search')}<input id="guide-search" aria-label="${L('Search guides')}" value="${esc(guideQuery)}" placeholder="${L('Search care, safety, offline…')}"></div><div class="stack spaced">${items.map(g=>`<button class="card guide-row" data-action="go" data-path="/guide/${g.id}"><span class="icon-tile ${g.color}">${I(g.icon)}</span><div><h3>${g.title}</h3><p>${g.sub}</p></div>${I('arrow')}</button>`).join('')||empty(L('No matching guide'),L('Try another word.'))}</div>`;}
-function guidePage(id){const g=guides().find(g=>g.id===id);if(!g)throw Error('missing');return `${heading(g.title,'/guides')}<div class="card"><span class="icon-tile ${g.color}">${I(g.icon)}</span><h2 class="spaced">${g.sub}</h2><div class="guide-body"><ol>${g.steps.map(s=>`<li>${s}</li>`).join('')}</ol></div><div class="rule"></div><p class="guide-source">${L('Source: SAATH supplied product specification, safeguards and offline design. Prototype guidance only; no clinical or legal protocol is claimed.')}</p></div>${id!=='danger'?btn(L('Immediate-danger guidance'),'urgent','outline wide spaced','','warning'):''}`;}
-function chatAllowed(channel){const v=M.volunteer(db);if(!v)return false;if(channel==='team'||channel==='coordinator')return true;if(channel.startsWith('case-')){try{return M.sensitive(db,M.record(db,channel.slice(5)))}catch(_){return false}}return false;}
-function chatKey(channel){return channel==='team'?`team-${M.volunteer(db).zone}`:channel==='coordinator'?`coordinator-${db.session.account}`:channel;}
-function chatsPage(){const mine=M.visible(db).filter(c=>M.sensitive(db,c));return `${heading(L('Conversations'))}${notice(L('Simulated response network'),L('Team, coordinator and case messages stay in this browser. Messages do not change task or case status.'))}<div class="chat-list spaced"><button class="card chat-channel" data-action="go" data-path="/chat/team"><span class="icon-tile green">${I('people')}</span><div><h3>${L('Zone team')} ${M.volunteer(db).zone}</h3><p>${L('Local coordination & check-ins')}</p></div>${I('arrow')}</button><button class="card chat-channel" data-action="go" data-path="/chat/coordinator"><span class="icon-tile">${I('shield')}</span><div><h3>${L('Ward coordinator')}</h3><p>${L('Priya · scripted demonstration')}</p></div>${I('arrow')}</button></div><div class="section-title"><h2>${L('Assigned case conversations')}</h2></div><div class="stack">${mine.length?mine.map(c=>`<button class="card chat-channel" data-action="go" data-path="/chat/case-${c.id}"><span class="icon-tile">${I('chat')}</span><div><h3>${esc(c.id)}</h3><p>${caseTitle(c)}</p></div>${I('arrow')}</button>`).join(''):empty(L('Accept a task to join its conversation'),L('Case chats are limited to authorized assigned responders.'))}</div>`;}
-function chatPage(channel){if(!chatAllowed(channel))throw Error('access');currentChannel=channel;const key=chatKey(channel),messages=db.chats[key]||[];return `${heading(channel==='team'?L('Zone team'):channel==='coordinator'?L('Ward coordinator'):esc(channel.slice(5)),'/chats')}${notice('',L('Demo chat · scripted replies · no external messages are sent. Use case actions to change a case.'))}<div class="chat-feed" role="log" aria-label="${L('Chat messages')}"><div class="bubble"><b>${L('Priya · demo coordinator')}</b>${L('Welcome. Keep personal details in the assigned case record. Tell us what support your team needs.')}<small>${L('Scripted introduction')}</small></div>${messages.map(m=>`<div class="bubble ${m.sender===db.session.account?'mine':''}"><b>${m.sender===db.session.account?L('You'):L('Priya · scripted demo')}</b>${esc(m.text)}<small>${time(m.at)} · ${m.pending?L('NOT SENT · saved locally'):L('Local simulation')}</small></div>`).join('')}</div><form id="chat-form" class="chat-compose"><input name="message" required maxlength="800" aria-label="${L('Message')}" placeholder="${L('Write a message…')}"><button type="submit" class="btn" aria-label="${L('Send message')}">${I('send')}</button></form>`;}
-function relevantNotices(){const v=M.volunteer(db);return db.notices.filter(n=>v?n.zone===v.zone&&db.records.find(c=>c.id===n.caseId)?.transport==='ack':n.account===db.session?.account);}
-function unreadNotices(){return relevantNotices().filter(n=>!n.readBy.includes(db.session?.account));}
-function notificationsPage(){if(!db.session)throw Error('access');const notes=relevantNotices();return `${heading(L('Updates that matter'))}<p class="form-caption">${L('Opening an update marks it read. Acknowledging and accepting remain separate actions.')}</p><div class="stack">${notes.length?notes.map(n=>`<button class="card case-card" data-action="open-notice" data-notice="${n.id}" data-id="${n.caseId}"><div class="row"><span class="kicker">${esc(n.caseId)}</span>${pill(n.readBy.includes(db.session.account)?L('Read'):L('Unread'),n.readBy.includes(db.session.account)?'neutral':'green')}</div><h3>${eventText(n)}</h3><p>${time(n.at)}</p></button>`).join(''):empty(L('You’re up to date'),L('Meaningful report and case changes will appear here.'))}</div>`;}
-function settingsPage(){return `${heading(L('Make SAATH work for you'),db.session?home():'/language')}<div class="stack"><div class="card"><h2>${L('Your preferences')}</h2><div class="setting-row"><div><h3>${L('Language')}</h3><p>${db.prefs.lang==='hi'?'हिंदी':'English'}</p></div>${btn(L('हिंदी'),'toggle-lang','outline compact')}</div><div class="setting-row"><div><h3>${L('Interface sounds')}</h3><p>${L('Gentle feedback from the supplied sound set')}</p></div><button class="toggle ${db.prefs.sound?'on':''}" data-action="sound" aria-pressed="${db.prefs.sound}">${db.prefs.sound?L('On'):L('Off')}</button></div><p class="small muted spaced">${L('Reduced motion follows your device preference. Sound starts only after an interaction.')}</p></div><div class="card"><div class="row"><h2>${L('Demo controls')}</h2>${pill(L('SIMULATION'),'amber')}</div><p class="form-caption">${L('All accounts, approvals, acknowledgements and conversations are fictional. No backend or live emergency service is connected.')}</p>${select('network',L('Connection scenario'),[['online',L('Connected · demo receiver available')],['offline',L('Offline · save locally')],['fail',L('Delivery failure · retry needed')]],db.prefs.network)}<div class="actions">${btn(L('Retry / sync my updates'),'sync','outline wide','','refresh')}</div>${db.session?`<div class="rule"></div><h3>${L('Current demo account')}</h3><p class="small muted spaced">${db.session.role==='volunteer'?L('Volunteer'):L('Civilian')} · ${esc(db.session.account)}</p>${btn(L('Sign out / switch demo role'),'logout','outline wide spaced','','exit')}<p class="small muted spaced">${L('Uses the separate sign-in screens. Shared reports remain on this browser.')}</p>`:''}</div><div class="card"><h2>${L('Try the full care journey')}</h2><div class="step-help spaced">${L('<b>1. Civilian</b>Use 9000000001 and demo code 123456. Report a food or water need in Zone A.<br><b>2. Volunteer</b>Sign out, enter SAATH-V101 with code 2468. Accept a task, check welfare and record help.<br><b>3. Civilian</b>Sign back into the same phone number. See the outcome and continuing-care status.')}</div><p class="small muted spaced">${L('Demo permissions are browser rules, not production authentication. Use fictional details only.')}</p></div><div class="card"><h2>${L('Your local demo data')}</h2><p class="form-caption">${L('Export a backup before clearing browser data. Reset removes this demo’s cases, drafts, chats and preferences on this browser only.')}</p><div class="actions">${btn(L('Export demo data'),'export','outline')}${btn(L('Reset demo'),'reset','outline')}</div></div></div>`;}
-function stopVoice(){SaathVoice.stop(true);SaathVoice.clear();recording=false;voiceStage='idle';}
-function speechError(code){
-  const messages={secure:L('Open SAATH in your phone browser using the HTTPS link to enable the microphone.'),NotAllowedError:L('Microphone access was blocked. Allow the microphone in your browser’s site settings, then try again.'),NotFoundError:L('No microphone was found. Connect one, or enter your report manually.'),NotReadableError:L('Your microphone is busy. Close another recording app and try again.'),unsupported:L('Microphone works. This browser cannot transcribe speech; listen back and type your words, or use your keyboard’s dictation.'),'not-allowed':L('Transcription permission is blocked. Your microphone recording still works. Allow speech access or type your words.'),network:L('The speech service could not connect. Audio capture continues; type your words or try again online.'),'no-speech':L('No words were detected. Speak closer to the microphone, or type below.'),'speech-ended':L('Browser transcription has stopped. Tap to finish your recording, or start again for more words.'),limit:L('Two-minute recording limit reached. Review your words, then record again if needed.'),meter:L('Audio capture is available, but the live level display could not start.'),playback:L('Audio playback is unavailable; transcription and manual entry are still available.')};
-  return messages[code]||L('The speech service is unavailable. Your recording stays here; use manual entry or keyboard dictation.');
+function urgency(c) {
+  if (c.escalated || c.safety === 'yes' || c.safety === 'unsure') return 'urgent';
+  if (c.help.some(h => h === 'medication' || h === 'protected') || c.who.some(w => w === 'medical' || w === 'child')) return 'priority';
+  return 'routine';
 }
-function startSpeech(languageMode=false){
-  if(SaathVoice.active){SaathVoice.stop();return}
-  voiceSeconds=0;voiceNotice='';voiceBase=voiceText;
-  SaathVoice.start({lang:db.prefs.lang==='hi'?'hi-IN':'en-IN',
-    onState:state=>{voiceStage=state;recording=['requesting','listening','audio-only','finishing'].includes(state);if(!languageMode&&route()[0]==='voice')render();else if(languageMode)toast(state==='idle'?L('Microphone stopped.'):L('Say “English” or “Hindi”. You will confirm the detected choice.'))},
-    onTranscript:(final,interim)=>{
-      if(languageMode){if(final)detectLanguage(final);return}
-      voiceText=[voiceBase,final,interim].filter(Boolean).join(' ').slice(0,3000);
-      const input=document.getElementById('transcript');if(input)input.value=voiceText;
-      voiceNotice=L('Live transcript · review every word before filling the form.');const feedback=document.getElementById('voice-feedback');if(feedback)feedback.textContent=voiceNotice;
-    },
-    onLevel:(level,bands,seconds)=>{voiceSeconds=seconds;const path=document.getElementById('voice-contour');if(path)path.setAttribute('d',contourPath(matchMedia('(prefers-reduced-motion: reduce)').matches?0:level,bands));const timer=document.getElementById('voice-time');if(timer)timer.textContent=`${Math.floor(seconds/60).toString().padStart(2,'0')}:${Math.floor(seconds%60).toString().padStart(2,'0')}`;document.querySelector('.microphone-orb')?.style.setProperty('--mic-level',level)},
-    onError:code=>{voiceNotice=speechError(code);if(languageMode)toast(voiceNotice);else{const feedback=document.getElementById('voice-feedback');if(feedback)feedback.textContent=voiceNotice}},
-    onClip:()=>{if(!languageMode&&route()[0]==='voice')render()}
+const needs = c => c.who.includes('child') || c.help.includes('protected') ? 'protected' : c.who.includes('medical') || c.help.includes('medication') ? 'medical' : 'general';
+const canTake = c => { const v = me(); return !!v && c.zone === v.zone && v.scopes.includes(needs(c)); };
+const isOpen = c => !c.assignedTo && c.status !== 'closed';
+const helperName = c => c.helper || VOLS[c.assignedTo]?.name || '';
+const helpText = c => c.help.map(h => t(HELP[h])).join(' · ');
+const statusText = c => c.status === 'closed' ? t(c.outcome === 'referred' ? 'Referred onward' : 'Care delivered') : c.status === 'queued' ? t('Saved · waiting for network') : t(STAGE[c.status]);
+const live = c => !c.example && c.status !== 'queued'; // what volunteers can see
+const tint = c => c.status === 'closed' ? 'ok' : c.status === 'queued' ? 'q' : urgency(c);
+const urgTag = c => c.escalated ? t('Escalated') : t(URG[urgency(c)]);
+const step = c => STAGES.indexOf(c.status) + 1;
+const lastT = c => c.events[c.events.length - 1].t;
+const badge = c => { const u = urgency(c); return `<span class="badge u-${u}">${t(URG[u])}</span>`; };
+const heroFor = c => c.status === 'closed' ? 'ok' : c.status === 'queued' ? 'warn' : { urgent: 'err', priority: 'warn', routine: '' }[urgency(c)];
+
+/* live "volunteer on the way" tracker. ponytail: simulated at 1 m/s from the moment of assignment; real GPS comes later */
+const TRACK_FROM = 900;
+const trackDist = c => Math.max(30, Math.round(TRACK_FROM - (Date.now() - (c.events.find(e => e.s === 'assigned')?.t || Date.now())) / 1000));
+const trackLabel = d => d < 50 ? t('Arriving now') : t('{n} m away').replace('{n}', d);
+function tracker(c) {
+  const d = trackDist(c);
+  return `<div class="track" id="track" style="--f:${(1 - d / TRACK_FROM).toFixed(3)}" role="status">
+    <div class="rc-row"><b>${esc(helperName(c))} ${t('is on the way')}</b><span id="track-d">${trackLabel(d)}</span></div>
+    <div class="track-bar" aria-hidden="true"><span class="track-fill"></span><span class="track-me">${ic('user')}</span><span class="track-pin">${em('pin')}</span></div>
+    <small>${esc(c.landmark)}</small></div>`;
+}
+function trackTick(c) {
+  const el = $('#track');
+  if (!el) return clearInterval(timer);
+  const d = trackDist(c);
+  el.style.setProperty('--f', (1 - d / TRACK_FROM).toFixed(3));
+  $('#track-d').textContent = trackLabel(d);
+}
+
+/* photos: downscaled on the phone before they're stored */
+function shrink(file) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 720 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(img.src);
+      res(cv.toDataURL('image/jpeg', .72));
+    };
+    img.onerror = rej;
+    img.src = URL.createObjectURL(file);
   });
 }
-function detectLanguage(text){const code=/hindi|हिंदी|हिन्दी|[\u0900-\u097f]/i.test(text)?'hi':/english|अंग्रेज/i.test(text)?'en':null;stopVoice();if(!code){toast(L('Only English and Hindi are supported in this prototype. Please choose one.'));return}showDialog(L('Confirm your language'),`<p>${L('Detected from your words · simulated AI')}</p><h2 class="spaced">${code==='hi'?'हिंदी':'English'}</h2><p>${esc(text)}</p><div class="actions">${btn(L('Use this language'),'confirm-language','',`data-lang="${code}"`)}${btn(L('Choose manually'),'close-dialog','outline')}</div>`);}
-function syncAll(){M.sync(db);for(const [key,messages] of Object.entries(db.chats)){const mine=messages.filter(m=>m.pending&&m.sender===db.session?.account);for(const m of mine){m.pending=false;messages.push({id:M.id('MSG'),sender:'coordinator',text:L('Demo reply: message noted. Use the structured case actions for assignment, escalation and outcomes.'),at:M.now(),pending:false})}}persist();sound('notify');render();toast(L('Your local updates were processed by the demo receiver.'));}
-document.addEventListener('click',e=>{
-  const el=e.target.closest('[data-action]');if(!el||el.disabled)return;const a=el.dataset.action;
-  if(!openingPlayed){openingPlayed=true;sound('open')}else if(!['record','sound'].includes(a))sound('click');
-  try{
-    if(a==='go')go(el.dataset.path);
-    else if(a==='close-dialog')closeDialog();
-    else if(a==='open-selection')openSelection(el.dataset.field);
-    else if(a==='toggle-lang'){db.prefs.lang=db.prefs.lang==='en'?'hi':'en';render()}
-    else if(a==='language'){db.prefs.lang=el.dataset.lang;render();sound('soft')}
-    else if(a==='confirm-language'){db.prefs.lang=el.dataset.lang;closeDialog();render()}
-    else if(a==='speak-language')startSpeech(true);
-    else if(a==='sound'){db.prefs.sound=!db.prefs.sound;if(!db.prefs.sound)audioPlaying?.pause();else sound('soft');render()}
-    else if(a==='role'){authRole=el.dataset.role;otpStage=false;loginError='';go('/login')}
-    else if(a==='change-phone'){otpStage=false;loginError='';render()}
-    else if(a==='unverified')showDialog(L('Limited unverified reporting'),`<p>${L('You can save and submit an unverified care request. The demo coordinator must review it before any task is authorized. You can only see your own reports.')}</p><div class="actions">${btn(L('Continue unverified'),'enter-unverified')}${btn(L('Back'),'close-dialog','outline')}</div>`);
-    else if(a==='enter-unverified'){db.session={role:'civilian',account:'unverified-device',verified:false};closeDialog();go('/home')}
-    else if(a==='logout'){db.session=null;otpStage=false;loginError='';persist();go('/roles')}
-    else if(a==='primary')go(home());
-    else if(a==='begin')begin(el.dataset.mode);
-    else if(a==='resume')go(draft().danger?'/intake':'/safety');
-    else if(a==='discard-draft')showDialog(L('Discard this draft?'),`<p>${L('Only this unfinished report will be removed. Submitted reports stay in your history.')}</p><div class="actions">${btn(L('Discard draft'),'confirm-discard','danger')}${btn(L('Keep draft'),'close-dialog','outline')}</div>`);
-    else if(a==='confirm-discard'){delete db.drafts[db.session.account];closeDialog();render()}
-    else if(a==='urgent')showDialog(L('Immediate-danger guidance'),urgentBody()+`<div class="actions">${btn(L('Return to what I was doing'),'close-dialog','outline wide')}</div>`);
-    else if(a==='safety-next'){if(!draft().danger)throw Error('invalid');go(draft().mode==='voice'?'/voice':'/intake');sound('step')}
-    else if(a==='record')startSpeech();
-    else if(a==='voice-example'){stopVoice();voiceText=L('My neighbor needs food and drinking water. Their caregiver is unavailable. Location: House 18, Neem Lane, behind the community library.');voiceNotice=L('Fictional example loaded. Review and edit it before continuing.');render()}
-    else if(a==='save-draft'){persist();go('/reports');toast(L('Draft saved on this device. Nothing was sent.'))}
-    else if(a==='filter'){currentFilter=el.dataset.value;render()}
-    else if(a==='ack'){M.acknowledge(db,el.dataset.id);render();toast(L('Alert acknowledged. No task accepted.'))}
-    else if(a==='accept'){M.accept(db,el.dataset.id,el.dataset.task);render();sound('step');toast(L('Task accepted in the demo. Necessary case details are now visible.'))}
-    else if(a==='escalate')showDialog(L('Request appropriate help'),`<p>${L('Explain the concern. This records a simulated coordinator request; no external service is contacted.')}</p><form id="escalate-form" data-id="${el.dataset.id}" class="form spaced">${textarea('note',L('Reason and known limitations'),'','required maxlength="1200"')}<button class="btn wide" type="submit">${M.online(db)?L('Record escalation · demo'):L('Queue escalation · NOT SENT')}</button></form>`);
-    else if(a==='retry'){const ok=M.retry(db,el.dataset.id);render();sound(ok?'success':'error');toast(ok?L('Demo receipt acknowledged. One report, one stable ID.'):L('Still not acknowledged. Choose Connected in Demo controls and retry.'))}
-    else if(a==='sync'){if(!db.session)throw Error('access');syncAll()}
-    else if(a==='conflict'){M.conflict(db,el.dataset.id);render();toast(L('Separate mock update added. Sync to see both histories preserved.'))}
-    else if(a==='handoff')showDialog(L('Simulate a handoff acknowledgement?'),`<p>${L('The fictional ward response team will acknowledge continuing-care responsibility. This does not accept the next volunteer task or resolve remaining needs.')}</p><div class="actions">${btn(L('Run demonstration'),'confirm-handoff','',`data-id="${el.dataset.id}"`)}${btn(L('Cancel'),'close-dialog','outline')}</div>`);
-    else if(a==='confirm-handoff'){M.handoff(db,el.dataset.id);closeDialog();render();sound('notify')}
-    else if(a.startsWith('relay-')){const result=M.relay(db,el.dataset.id,{'relay-share':'share','relay-gateway':'gateway','relay-expire':'expire','relay-fail':'fail'}[a]);render();toast(result==='duplicate'?L('Duplicate acknowledgement ignored. The case was not created again.'):a==='relay-share'?L('One temporary peer copy. Delivery remains unconfirmed.'):a==='relay-gateway'?L('Demo receiver acknowledged; temporary copies cleaned up.'):L('Peer copy removed. Your original report is still queued and unsent.'));if(a==='relay-gateway'&&result!=='duplicate')sound('success')}
-    else if(a==='zone'){selectedZone=el.dataset.zone;render()}
-    else if(a==='badges')showDialog(L('Qualifications & permissions'),`<p>${L('All badges are fictional demo credentials. General, military, medical, psychology and legal backgrounds describe qualifications. A separate permission list and task authorization determine what each person can accept.')}</p><div class="actions">${btn(L('Understood'),'close-dialog','wide')}</div>`);
-    else if(a==='open-notice'){const n=db.notices.find(n=>n.id===el.dataset.notice);if(n&&!n.readBy.includes(db.session.account))n.readBy.push(db.session.account);go('/case/'+el.dataset.id)}
-    else if(a==='export'){const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='SAATH-demo-backup.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(L('Demo data exported. Keep the file private.'))}
-    else if(a==='reset')showDialog(L('Reset this demonstration?'),`<p>${L('This removes this browser’s SAATH reports, drafts, chats and settings. Export first if you want to keep them.')}</p><div class="actions">${btn(L('Reset all demo data'),'confirm-reset','danger')}${btn(L('Cancel'),'close-dialog','outline')}</div>`);
-    else if(a==='confirm-reset'){stopVoice();db=M.seed();storageBlocked=false;storageWarning='';voiceText='';fieldDraft={};formErrors=[];currentFilter='all';search='';closeDialog();persist();go('/language')}
-    persist();
-  }catch(error){fail(error)}
-});
-document.addEventListener('input',e=>{
-  const el=e.target;
-  if(el.matches('[data-draft]')&&!['checkbox','radio'].includes(el.type)){draft()[el.name]=el.value;persist()}
-  if(el.matches('[data-field]')){const tid=el.closest('form').dataset.task;fieldDraft[tid]||={};fieldDraft[tid][el.name]=el.type==='checkbox'?el.checked:el.value;}
-  if(el.id==='transcript')voiceText=el.value;
-  if(el.id==='case-search'||el.id==='guide-search'){const pos=el.selectionStart,key=el.id;if(key==='case-search')search=el.value;else guideQuery=el.value;render();const target=document.getElementById(key);target.focus();target.setSelectionRange(pos,pos)}
-});
-document.addEventListener('change',e=>{const el=e.target;if(el.matches('[data-draft]')){const d=draft();if(el.type==='checkbox'){d[el.name]=[...document.querySelectorAll(`input[name="${el.name}"]:checked`)].map(x=>x.value)}else d[el.name]=el.value;persist();const count=document.getElementById('selection-count');if(count)count.textContent=d[el.name]?.length||0;document.querySelectorAll('[data-selection-count]').forEach(el=>{el.textContent=d[el.dataset.selectionCount].length});if(['criteria','needs','subjectConsent','danger'].includes(el.name)){const focusName=el.name,focusValue=el.value;render();document.querySelector(`[name="${focusName}"][value="${CSS.escape(focusValue)}"]`)?.focus()}}if(el.id==='network'){db.prefs.network=el.value;persist();render();toast(L('Connection scenario changed. Use Retry / sync to process your local updates.'))}});
-document.addEventListener('submit',e=>{const form=e.target;if(!form.id)return;e.preventDefault();const fd=new FormData(form),values=Object.fromEntries(fd.entries());try{
-  if(form.id==='language-form')detectLanguage(values['language-input']);
-  if(form.id==='login-form'){
-    loginError='';
-    if(authRole==='volunteer'){
-      const v=M.roster.find(v=>v.id===values['volunteer-id']?.trim().toUpperCase());
-      if(!v||values['volunteer-pin']!=='2468'){loginError=L('Use a listed demo volunteer ID and access code 2468.');render();sound('error');return}
-      db.session={role:'volunteer',account:v.id,verified:true};selectedZone=v.zone;persist();go('/overview');sound('step');
-    }else if(!otpStage){if(!/^[6-9]\d{9}$/.test(values.phone)){loginError=L('Enter a 10-digit mobile number beginning with 6–9.');render();return}phone=values.phone;otpStage=true;render();sound('step')}
-    else {if(values.otp!=='123456'){loginError=L('The demo code is 123456. No SMS is sent.');render();sound('error');return}db.session={role:'civilian',account:phone,verified:true};persist();go('/home');sound('step')}
+const photoBlock = d => d.photo
+  ? `<div class="ph-prev"><img src="${d.photo}" alt="${t('Attached photo')}">${btn(t('Remove photo'), 'data-act="removePhoto"', { v: 'text', icon: 'x' })}</div>`
+  : `<label class="btn tonal ph-add">${ic('camera')}<span>${t('Add a photo')}</span><input type="file" accept="image/*" id="f-photo" class="sr"></label>`;
+const scopeShort = c => c.zone !== me().zone ? t('Outside your zone') : t(needs(c) === 'medical' ? 'Needs medical scope' : 'Coordinator only');
+
+/* ---------- navigation ---------- */
+const cur = () => S.stack[S.stack.length - 1];
+function go(n, p = {}) { S.stack.push({ n, p }); show('fwd'); }
+function reset(n, p = {}) { S.stack = [{ n, p }]; show('fade'); }
+function back() { if (S.stack.length > 1) S.stack.pop(); show('back'); }
+function goHome() { S.user ? reset(S.role === 'vol' ? 'vHome' : 'home') : reset('lang'); }
+function show(dir = '') {
+  clearInterval(timer);
+  closeSheet();
+  const { n, p } = cur();
+  if (['safety', 'details', 'review'].includes(n) && !S.draft) return reset('home');
+  if (['vReg', 'vRegDone'].includes(n) && !S.reg) return reset('lang');
+  save();
+  document.documentElement.lang = S.lang === 'hi' ? 'hi' : 'en';
+  app.innerHTML = (V[n] || V.lang)(p || {});
+  // Every signed-in screen keeps the nav bar; the tab that opened this stack stays highlighted.
+  if (S.user && !app.querySelector('.nav')) app.firstElementChild.insertAdjacentHTML('beforeend', nav(S.stack[0].n));
+  if (S.user && S.offline) {
+    const banner = `<div class="offline" role="status">${ic('wifioff')}<span>${t('You’re offline. Reports are saved on this phone.')}</span></div>`;
+    const b = app.querySelector('.bar');
+    b ? b.insertAdjacentHTML('afterend', banner) : app.firstElementChild.insertAdjacentHTML('afterbegin', banner);
   }
-  if(form.id==='voice-form'){
-    voiceText=values.transcript.trim();if(!voiceText)throw Error('invalid');stopVoice();const fields=M.extract(voiceText),d=draft();d.notes=fields.notes;d.criteria=[...new Set([...d.criteria,...fields.criteria])];d.needs=[...new Set([...d.needs,...fields.needs])];if(fields.relation)d.relation=fields.relation;if(fields.landmark)d.landmark=fields.landmark;d.mode='voice';persist();go('/intake');sound('step');
+  if (dir && !reduced()) app.firstElementChild.classList.add('in-' + dir);
+  if (n === 'voice') listen();
+  if (n === 'request' && $('#track')) { const c = byId(p.id); timer = setInterval(() => trackTick(c), 1000); }
+  if (n === 'thread') { const m = $('.msgs'); if (m) m.scrollTop = m.scrollHeight; }
+  if (n === 'vMap') { const c = p.id && byId(p.id); fitMap(...(c ? c.xy : HERE[me().zone])); }
+}
+
+/* ---------- shared pieces ---------- */
+const logo = () => `<button class="logo" data-act="home" aria-label="Saath home"><span class="logo-m"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="5"/><circle cx="15" cy="12" r="5"/></svg></span><span>Saath</span></button>`;
+function bar({ back: showBack = false, title = '' } = {}) {
+  return `<header class="bar">
+    ${showBack ? `<button class="icon-btn" data-act="back" aria-label="${t('Back')}">${ic('back')}</button>` : logo()}
+    ${title ? `<span class="bar-title">${title}</span>` : ''}
+    <div class="bar-end">
+      <button class="icon-btn tonal" data-act="toggleLang" aria-label="${t('Switch language')}"><span class="lang-g">${S.lang === 'hi' ? 'EN' : 'हिं'}</span></button>
+      <button class="icon-btn" data-act="toggleSound" aria-pressed="${!!S.sound}" aria-label="${t('Sounds')}">${ic(S.sound ? 'sound' : 'mute')}</button>
+      <button class="btn outlined sm" data-act="proto">${t('Prototype')}</button>
+    </div>
+  </header>`;
+}
+function nav(active) {
+  const items = S.role === 'vol'
+    ? [['vHome', 'home', 'Today'], ['vCases', 'list', 'Cases'], ['chats', 'chat', 'Chats'], ['guides', 'book', 'Guides']]
+    : [['home', 'home', 'Home'], ['requests', 'list', 'Requests'], ['guides', 'book', 'Guides']];
+  return `<nav class="nav">${items.map(([s, i, l]) => `<button class="nav-i ${active === s ? 'on' : ''}" data-go="${s}" data-tab="1" ${active === s ? 'aria-current="page"' : ''}><span class="nav-ind">${ic(i)}</span><span>${t(l)}</span></button>`).join('')}</nav>`;
+}
+const steps = (n, labels = ['Safety', 'Details', 'Review']) => `<div class="progbar"><div class="pb" aria-hidden="true">${[1, 2, 3].map(i => `<i class="${i < n ? 'on' : i === n ? 'cur' : ''}"></i>`).join('')}</div><span>${t('Step')} ${n} / 3 · ${t(labels[n - 1])}</span></div>`;
+const prog = c => { const n = step(c); return `<div class="prog" role="img" aria-label="${t('Step')} ${n} / 5">${STAGES.map((_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</div>`; };
+function ring(f) {
+  const r = 70, C = 2 * Math.PI * r;
+  return `<svg class="ring-svg" viewBox="0 0 160 160" aria-hidden="true"><circle class="ring-track" cx="80" cy="80" r="${r}"/><circle class="ring-fill" cx="80" cy="80" r="${r}" stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 80 80)"/></svg>`;
+}
+function timeline(c) {
+  const n = step(c);
+  const rows = STAGES.map((s, i) => {
+    const e = c.events.find(x => x.s === s), done = i < n, next = i === n;
+    const label = s === 'closed' && c.outcome === 'referred' ? 'Referred onward' : STAGE[s];
+    let sub = done && e ? ago(e.t) : next ? t(c.status === 'queued' ? 'Sends when you’re back online' : NEXT[s]) : '';
+    if (done && s === 'assigned' && helperName(c)) sub += ' · ' + esc(helperName(c));
+    return `<li class="${done ? 'done' : next ? 'next' : ''}"><span class="tl-dot">${done ? ic('check') : ''}</span><span><b>${t(label)}</b>${sub ? `<small>${sub}</small>` : ''}</span></li>`;
+  }).join('');
+  const notes = c.events.filter(e => e.s === 'note').map(e => `<p class="tl-note">${ic('info')}<span>${esc(t(e.text))} · ${ago(e.t)}</span></p>`).join('');
+  return `<ol class="tl">${rows}</ol>${notes}`;
+}
+const draftCard = () => `<div class="card draft"><div><p class="tile-t">${t('Unfinished report')}</p><p class="fine">${t('Saved on this phone · not sent')}</p></div><div class="row">${btn(t('Discard'), 'data-act="discardDraft"', { v: 'text' })}${btn(t('Resume'), 'data-act="resumeDraft"', { v: 'tonal sm' })}</div></div>`;
+const reqCard = c => `<button class="rcard t-${tint(c)}" data-go="request" data-p="${c.id}">
+  <span class="rc-row"><span class="mono">${c.id}</span>${c.example ? `<span class="badge u-ex">${t('Example')}</span>` : badge(c)}</span>
+  <span class="rc-title">${helpText(c)}</span>
+  <span class="rc-meta">${em('pin')}${esc(c.landmark)}</span>
+  ${prog(c)}
+  <span class="rc-row fine"><span>${statusText(c)}</span><span>${ago(lastT(c))}</span></span>
+</button>`;
+function caseCard(c) {
+  const state = c.assignedTo
+    ? (c.assignedTo === S.user.vid ? t('You’re on it') : `${t('Taken by')} ${VOLS[c.assignedTo].name}`)
+    : canTake(c) ? `<span class="ok">${ic('check')}${t('You can take this')}</span>` : scopeShort(c);
+  return `<button class="rcard t-${tint(c)}" data-go="case" data-p="${c.id}">
+    <span class="rc-row"><span class="mono">${c.id} · ${t('Zone')} ${c.zone}</span>${badge(c)}</span>
+    <span class="rc-title">${helpText(c)}</span>
+    <span class="rc-meta">${em('pin')}${esc(c.landmark)}</span>
+    <span class="rc-row fine"><span>${state}</span><span>${ago(lastT(c))}</span></span>
+  </button>`;
+}
+// ponytail: fixed "you are here" per zone; swap for the phone's location when there is a real backend
+const HERE = { A: [150, 34], B: [274, 44] };
+const M_PER_UNIT = 6; // map units → metres, so the illustrative map gives plausible walking distances
+// opt.full: pins select (not navigate) and nothing is dimmed; opt.only filters the pins
+function mapSvg(v, focus, opt = {}) {
+  const pins = S.cases.filter(c => live(c) && c.status !== 'closed' && (!opt.only || opt.only(c))).map(c => {
+    const f = focus && c.id === focus.id;
+    const act = opt.full ? `data-act="pickPin" data-p="${c.id}" role="button" tabindex="0"` : f ? '' : `data-go="case" data-p="${c.id}" role="button" tabindex="0"`;
+    const dim = !f && (c.zone !== v.zone || (focus && !opt.full));
+    return `<g class="pin p-${urgency(c)} ${f ? 'focus' : dim ? 'far' : ''}" ${act} aria-label="${c.id} · ${helpText(c)}">${f ? `<circle class="pin-halo" cx="${c.xy[0]}" cy="${c.xy[1]}" r="18"/>` : ''}<circle cx="${c.xy[0]}" cy="${c.xy[1]}" r="${f ? 11 : 9}"/><circle class="pin-c" cx="${c.xy[0]}" cy="${c.xy[1]}" r="${f ? 4 : 3}"/></g>`;
+  }).join('');
+  const [x1, y1] = HERE[v.zone];
+  let route = focus ? `<path class="route" d="M${x1} ${y1}Q${x1} ${focus.xy[1]} ${focus.xy[0]} ${focus.xy[1]}"/>` : '';
+  route += `<g class="you"><circle class="you-halo" cx="${x1}" cy="${y1}" r="14"/><circle cx="${x1}" cy="${y1}" r="7"/></g><text class="m-you" x="${x1 + 12}" y="${y1 + 4}">${t('You')}</text>`;
+  return `<svg viewBox="0 0 320 170" role="img" aria-label="${t('Illustrative map of zones A and B')}">
+    <rect class="z-a" x="0" y="0" width="170" height="170"/><rect class="z-b" x="170" y="0" width="150" height="170"/>
+    <path class="road" d="M0 92H320M170 0V170M40 0L96 170M230 0C220 60 270 110 320 130"/>
+    <text class="m-l" x="12" y="20">${t('Zone A · Shanti Nagar')}</text><text class="m-l" x="180" y="20">${t('Zone B · Lake Road')}</text>
+    <text class="m-s" x="72" y="44">Shanti School</text><text class="m-s" x="10" y="150">Community library</text><text class="m-s" x="104" y="160">Ward care desk</text>
+    ${route}${pins}</svg>`;
+}
+const legend = () => `<div class="legend"><span class="lg-urgent">${t('Urgent review')}</span><span class="lg-priority">${t('Priority review')}</span><span class="lg-routine">${t('Routine')}</span></div>`;
+const map = (v, focus) => `<div class="card map">${mapSvg(v, focus)}
+  <button class="icon-btn map-exp" data-go="vMap" ${focus ? `data-p="${focus.id}"` : ''} aria-label="${t('Full map')}">${ic('expand')}</button>
+  ${legend()}<p class="fine">${t('Illustrative map, not for navigation')}</p></div>`;
+const walk = (c, v) => {
+  const [x1, y1] = HERE[v.zone], [x2, y2] = c.xy;
+  const m = Math.round((Math.abs(x2 - x1) + Math.abs(y2 - y1)) * M_PER_UNIT / 10) * 10;
+  return `${m} m · ${t('{n} min walk').replace('{n}', Math.max(1, Math.round(m / 80)))}`;
+};
+function caseMap(c, v) {
+  return `<section class="stack case-map"><div class="sec-h"><h2 class="h2">${t('Where to go')}</h2><span class="badge u-routine">${walk(c, v)}</span></div>${map(v, c)}</section>`;
+}
+
+/* full-screen map: the same SVG, sized by zoom level inside a scrolling frame */
+function fitMap(cx, cy) {
+  const fm = $('#fm'), svg = fm?.querySelector('svg');
+  if (!svg) return;
+  const h = fm.clientHeight * (S.mapZ || 1), k = h / 170;
+  svg.style.height = h + 'px'; svg.style.width = h * 320 / 170 + 'px';
+  fm.scrollLeft = cx * k - fm.clientWidth / 2;
+  fm.scrollTop = cy * k - fm.clientHeight / 2;
+}
+function mapCenter() {
+  const fm = $('#fm'), k = fm.clientHeight * (S.mapZ || 1) / 170;
+  return [(fm.scrollLeft + fm.clientWidth / 2) / k, (fm.scrollTop + fm.clientHeight / 2) / k];
+}
+function scopeBox(c) {
+  const v = me();
+  if (canTake(c)) return `<div class="scope yes">${em('check')}<p><b>${t('Within your scope')}</b><br>${t(v.skill)} · ${t('Zone')} ${v.zone}</p></div>`;
+  const why = c.zone !== v.zone ? 'This case is outside your zone.'
+    : needs(c) === 'medical' ? 'Needs a volunteer with medical training. The coordinator will find one.'
+    : 'Protected referrals are handled by trained coordinators only.';
+  return `<div class="scope no">${em(needs(c) === 'medical' ? 'stethoscope' : 'shield')}<p><b>${t('Not in your scope')}</b><br>${t(why)}</p></div>`;
+}
+const DD = { who: WHO, help: HELP };
+const ddText = f => S.draft[f].map(k => t(DD[f][k])).join(', ') || `<span class="muted">${t('Select all that fit')}</span>`;
+const tf = (id, label, { value = '', attrs = '', cls = '', area = false, support = '' } = {}) =>
+  `<label class="tf ${cls}">${area ? `<textarea id="${id}" placeholder=" " ${attrs}>${esc(value)}</textarea>` : `<input id="${id}" placeholder=" " value="${esc(value)}" ${attrs}>`}<span class="lab">${label}</span></label>${support ? `<p class="support">${support}</p>` : ''}`;
+const radioItem = (act, v, on, title, sub, lead) => `<button class="li" role="radio" aria-checked="${on}" data-act="${act}" data-v="${v}">${lead}<span class="li-t"><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span><span class="radio"></span></button>`;
+
+/* ---------- screens ---------- */
+const V = {};
+
+V.lang = () => {
+  const L = S.lang || 'en';
+  const opt = (v, a, b, g) => `<button class="lang-opt" role="radio" aria-checked="${L === v}" data-act="setLang" data-v="${v}"><span class="radio"></span><span class="glyph">${g}</span><b>${a}</b><small>${b}</small></button>`;
+  return `<div class="scr onboard"><div class="ob-bg" aria-hidden="true"><span></span><span></span><span></span></div><main class="body center">
+    ${orb('wave', 'calm', 168)}
+    <p class="greet" aria-label="Hello, नमस्ते"><span aria-hidden="true">Hello</span><span lang="hi" aria-hidden="true">नमस्ते</span></p>
+    <h1 class="h1">${t('Care starts with understanding.')}</h1>
+    <p class="lede">${t('Choose the language you’re comfortable with. You can change it anytime.')}</p>
+    <div class="lang-grid" role="radiogroup" aria-label="Language">${opt('en', 'English', 'अंग्रेज़ी', 'Aa')}${opt('hi', 'हिंदी', 'Hindi', 'अ')}</div>
+  </main><footer class="foot">${btn(t('Continue'), 'data-act="langNext"', { icon: 'arrow', trail: true })}<p class="fine center">${t('Welcome to Saath')}</p></footer></div>`;
+};
+
+V.role = () => `<div class="scr">${bar({ back: true })}<main class="body">
+  <h1 class="h1">${t('How are you joining?')}</h1>
+  <p class="lede">${t('Two ways in. One care network for the ward.')}</p>
+  <div class="grid2">
+    <button class="hero role-card" data-go="civLogin">${em('speech')}<span class="rc-t">${t('Report a need')}</span><small>${t('For someone nearby, or yourself')}</small><span class="rc-go">${ic('arrow')}</span></button>
+    <button class="hero lav role-card" data-go="volLogin">${em(VOL_E)}<span class="rc-t">${t('I’m a volunteer')}</span><small>${t('Sign in with your volunteer ID')}</small><span class="rc-go">${ic('arrow')}</span></button>
+  </div>
+  <div class="note">${em('shield')}<p>${t('You only share what you know. Nothing is sent until you review it.')}</p></div>
+</main></div>`;
+
+V.civLogin = p => {
+  const otp = p.step === 'otp', bad = p.err ? 'aria-invalid="true" aria-describedby="err"' : '';
+  return `<div class="scr">${bar({ back: true })}<main class="body">
+    <span class="emo-box lg">${em(otp ? 'lock' : 'phone')}</span>
+    <div><p class="eyebrow">${t('Neighbour sign-in')}</p><h1 class="h1">${otp ? t('Enter the 6-digit code') : t('Your phone number')}</h1></div>
+    <p class="lede">${otp ? `${t('We sent it to')} +91 ${esc(p.phone)}` : t('We use it to send you updates on the care you asked for.')}</p>
+    <form id="civForm" class="stack" novalidate>
+      ${otp
+        ? `<label class="tf ${p.err ? 'bad' : ''}"><input id="otp" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="${t('Code')}" ${bad}></label>
+           <button type="button" class="hint-chip" data-act="fill" data-target="otp" data-v="123456">${em('testtube')}${t('Prototype code')}: <b class="mono">123456</b></button>`
+        : `<label class="tf pre ${p.err ? 'bad' : ''}"><span class="prefix">+91</span><input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder=" " value="${esc(p.phone || '90000 00001')}" ${bad}><span class="lab">${t('Mobile number')}</span></label>
+           <p class="support">${t('Prototype: no SMS is sent.')}</p>`}
+      ${p.err ? `<p class="err" id="err" role="alert">${t(p.err)}</p>` : ''}
+      <button class="btn filled" type="submit"><span>${otp ? t('Verify') : t('Send code')}</span>${ic('arrow')}</button>
+    </form>
+    ${btn(otp ? t('Change number') : t('Can’t get a code? Report without verifying'), `data-act="${otp ? 'changePhone' : 'unverified'}"`, { v: 'text' })}
+  </main></div>`;
+};
+
+V.volLogin = p => `<div class="scr">${bar({ back: true })}<main class="body">
+  <span class="emo-box lg">${em('idcard')}</span>
+  <div><p class="eyebrow">${t('Volunteer sign-in')}</p><h1 class="h1">${t('Your zone. Your team.')}</h1></div>
+  <p class="lede">${t('Use the ID your ward coordinator gave you. Your skills decide which tasks you can take.')}</p>
+  <form id="volForm" class="stack" novalidate>
+    ${tf('vid', t('Volunteer ID'), { value: p.vid || '', cls: p.err ? 'bad' : '', attrs: 'autocapitalize="characters" autocomplete="username"' })}
+    ${tf('vcode', t('Access code'), { cls: p.err ? 'bad' : '', attrs: 'type="password" inputmode="numeric" autocomplete="current-password"' })}
+    ${p.err ? `<p class="err" role="alert">${t(p.err)}</p>` : ''}
+    <button class="btn filled" type="submit"><span>${t('Enter workspace')}</span>${ic('arrow')}</button>
+  </form>
+  ${btn(S.reg?.status === 'pending' ? t('Check your application') : t('New here? Register as a volunteer'), `data-act="startReg"`, { v: 'tonal', icon: 'arrow', trail: true })}
+  <section class="stack"><p class="lbl">${t('Prototype volunteers')} · ${t('code')} <b class="mono">2468</b></p>
+    <div class="list">${Object.entries(VOLS).map(([id, v]) => `<button class="li" data-act="pickVol" data-v="${id}"><span class="avatar">${v.name[0]}</span><span class="li-t"><b>${v.name}</b><small>${t('Zone')} ${v.zone} · ${t(v.skill)}</small></span><span class="mono">${id.slice(6)}</span></button>`).join('')}</div>
+  </section>
+</main></div>`;
+
+const REG_STEPS = ['About you', 'How you can help', 'Verification'];
+const regChips = (field, opts) => `<div class="chips">${Object.entries(opts).map(([k, l]) =>
+  `<button type="button" class="chip" aria-pressed="${S.reg[field] === k}" data-act="chip" data-obj="reg" data-field="${field}" data-v="${k}">${ic('check', 'ck')}<span>${t(l)}</span></button>`).join('')}</div>`;
+const regGrp = (key, label, inner, E, hint = '') => `<fieldset class="grp ${E.includes(key) ? 'bad' : ''}" id="g-${key}"><legend class="lbl">${t(label)}</legend>${hint ? `<p class="hint">${t(hint)}</p>` : ''}${inner}${E.includes(key) ? `<p class="err">${t('Please answer this.')}</p>` : ''}</fieldset>`;
+
+V.vReg = p => {
+  const r = S.reg, s = p.s || 1, E = p.errs || [];
+  const head = [['A helping hand.', 'Starting with you.'], ['How can you help?', ''], ['Let’s build trust.', '']][s - 1];
+  let inner = '';
+  if (s === 1) inner = `<p class="lede">${t('Just the basics. Your details stay with the ward coordinator.')}</p>
+    ${regGrp('name', 'Your name', tf('r-name', t('Full name'), { value: r.name, attrs: 'data-obj="reg" data-field="name" autocomplete="name"', cls: E.includes('name') ? 'bad' : '' }), E)}
+    ${regGrp('phone', 'Mobile number', `<label class="tf pre ${E.includes('phone') ? 'bad' : ''}"><span class="prefix">+91</span><input id="r-phone" type="tel" inputmode="numeric" placeholder=" " autocomplete="tel-national" data-obj="reg" data-field="phone" value="${esc(r.phone)}"><span class="lab">${t('Mobile number')}</span></label><p class="support">${t('Prototype: use any 10 digits. No SMS is sent.')}</p>`, E)}
+    ${regGrp('zone', 'Where will you help?', regChips('zone', { A: 'Zone A · Shanti Nagar', B: 'Zone B · Lake Road' }), E)}`;
+  if (s === 2) inner = `<p class="lede">${t('Choose what you’re comfortable doing. You can change this later.')}</p>
+    ${regGrp('skills', 'I can help with', `<div class="choices">${Object.entries(SKILLS).map(([k, [l, e]]) =>
+      `<button type="button" class="choice" aria-pressed="${r.skills.includes(k)}" data-act="chip" data-obj="reg" data-field="skills" data-v="${k}" data-multi="1">${em(e)}<span>${t(l)}</span><span class="tick">${ic('check')}</span></button>`).join('')}</div>`, E, 'Choose all that fit.')}
+    <div class="note">${em('shield')}<p>${t('Medical support and child protection need an extra qualification check before you can take those tasks.')}</p></div>
+    ${regGrp('avail', 'How often can you help?', regChips('avail', AVAIL), E)}`;
+  if (s === 3) inner = `<p class="lede">${t('Your identity is checked before you can accept tasks.')}</p>
+    ${regGrp('doc', 'Identity document', `<label class="tf sel ${E.includes('doc') ? 'bad' : ''}"><select id="r-doc" data-obj="reg" data-field="doc"><option value="">${t('Choose a sample document')}</option>${Object.entries(DOCS).map(([k, l]) => `<option value="${k}" ${r.doc === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select><span class="lab">${t('Document')}</span></label><p class="support">${t('Prototype documents only. Please don’t upload a real ID.')}</p>`, E)}
+    ${regGrp('agree', 'Code of conduct', `<label class="check"><input type="checkbox" id="r-agree" data-obj="reg" data-field="agree" ${r.agree ? 'checked' : ''}><span>${t('I’ll respect people’s privacy, only take tasks I’m trained for, and follow the coordinator’s guidance.')}</span></label>`, E)}`;
+  return `<div class="scr">${bar({ back: true })}${steps(s, REG_STEPS)}<main class="body form">
+    <div><p class="eyebrow">${t('Volunteer registration')}</p><h1 class="h1">${t(head[0])}${head[1] ? `<br>${t(head[1])}` : ''}</h1></div>
+    ${inner}
+  </main><footer class="foot">${btn(s === 3 ? t('Send for verification') : t('Continue'), 'data-act="regNext"', { icon: s === 3 ? 'check' : 'arrow', trail: s !== 3 })}</footer></div>`;
+};
+
+V.vRegDone = () => {
+  const r = S.reg;
+  const rows = [['Application received', true], ['ID check', false], ['Call with the ward coordinator', false], ['Short safety training', false], ['Volunteer ID issued', false]];
+  return `<div class="scr">${bar({ back: true })}<main class="body">
+    <div class="hero lav done">${orb('idcard', 'calm', 120)}<p class="eyebrow">${t('Application sent')}</p><h1 class="h1">${t('Thanks')}, ${esc(r.name.split(' ')[0])}.</h1><p>${t('The ward coordinator usually replies within 2 days. We’ll send your volunteer ID to')} +91 ${esc(r.phone)}.</p></div>
+    <section class="card"><h2 class="h2">${t('What happens next')}</h2><ol class="tl">${rows.map(([l, d], i) => `<li class="${d ? 'done' : i === 1 ? 'next' : ''}"><span class="tl-dot">${d ? ic('check') : ''}</span><span><b>${t(l)}</b></span></li>`).join('')}</ol></section>
+    <section class="card"><h2 class="h2">${t('You applied for')}</h2><p>${r.skills.map(k => `<span class="mini">${em(SKILLS[k][1])}${t(SKILLS[k][0])}</span>`).join('')}</p><p class="fine">${t('Zone')} ${r.zone} · ${ZONES[r.zone]} · ${t(AVAIL[r.avail])}</p></section>
+  </main><footer class="foot">${btn(t('Prototype: approve now'), 'data-act="regApprove"', { v: 'tonal', icon: 'check' })}</footer></div>`;
+};
+
+V.home = () => {
+  const latest = S.cases.find(c => c.mine);
+  return `<div class="scr">${bar()}<main class="body">
+    <div><p class="eyebrow">${t('Kanpur · Ward 12')}</p><h1 class="h1">${t('Who needs care today?')}</h1></div>
+    <button class="hero voice" data-go="voice">
+      <span class="tag">${S.lang === 'hi' ? 'हिंदी' : 'English'} · ${t('speak freely')}</span>
+      ${orb('mic')}
+      <span class="voice-t">${t('Tap to tell us')}</span>
+      <span class="voice-s">${t('Say what you saw. We turn it into a report you can check before sending.')}</span>
+    </button>
+    <div class="grid2">
+      <button class="tile" data-act="startReport">${em('memo')}<span class="tile-t">${t('Type it instead')}</span><small>${t('Three short steps')}</small></button>
+      <button class="tile err" data-go="guide" data-p="danger">${em('warning')}<span class="tile-t">${t('Someone in danger?')}</span><small>${t('Call 112 first')}</small></button>
+    </div>
+    ${S.draft ? draftCard() : ''}
+    <section class="stack">
+      <div class="sec-h"><h2 class="h2">${t('Your requests')}</h2>${btn(t('See all'), 'data-go="requests"', { v: 'text' })}</div>
+      ${latest ? reqCard(latest) : `<p class="fine">${t('Requests you send will show up here.')}</p>`}
+    </section>
+    ${S.user?.verified === false ? `<p class="fine">${t('Updates need a verified number. You can still report.')}</p>` : ''}
+  </main>${nav('home')}</div>`;
+};
+
+V.voice = () => `<div class="scr">
+  ${bar({ back: true })}
+  <main class="body center">
+    <h1 class="h2 center">${t('Tell us what’s happening')}</h1>
+    ${orb('mic', 'live', 190).replace('class="liquid live"', 'class="liquid live" id="orb"')}
+    <p class="voice-status" id="vstatus" aria-live="polite">${t('Listening…')}</p>
+    <p class="transcript" id="transcript"></p>
+    <p class="fine">${t('Prototype: a sample recording plays. Your microphone is not used.')}</p>
+  </main>
+  <footer class="foot"><div id="vdone" hidden>${btn(t('Check the report'), 'data-act="voiceDone"', { icon: 'arrow', trail: true })}</div></footer>
+</div>`;
+
+function listen() {
+  const words = t(SAMPLE).split(' '), o = $('#orb');
+  let i = 0;
+  const tick = () => {
+    $('#transcript').textContent = words.slice(0, ++i).join(' ');
+    o.style.setProperty('--amp', (0.93 + Math.random() * 0.17).toFixed(3));
+    if (i < words.length) return;
+    clearInterval(timer);
+    o.style.setProperty('--amp', 1);
+    o.classList.replace('live', 'calm');
+    $('#vstatus').textContent = t('Got it. Next, a quick safety check.');
+    $('#vdone').hidden = false;
+    sfx('notify');
+  };
+  if (reduced()) { i = words.length - 1; tick(); } else timer = setInterval(tick, 110);
+}
+
+V.safety = () => {
+  const d = S.draft;
+  const o = (v, e, a, b) => radioItem('safety', v, d.safety === v, t(a), t(b), `<span class="emo-box">${em(e)}</span>`);
+  return `<div class="scr">${bar({ back: true })}${steps(1)}<main class="body">
+    <h1 class="h1">${t('Is anyone in immediate danger?')}</h1>
+    <p class="lede">${t('Choose what you know right now. This doesn’t send an alert.')}</p>
+    <div class="list" role="radiogroup">
+      ${o('yes', 'siren', 'Yes, there’s danger now', 'Injury, violence, fire, or someone can’t breathe')}
+      ${o('no', 'check', 'No immediate danger', 'They need help, but not this minute')}
+      ${o('unsure', 'thinking', 'I’m not sure', 'We’ll treat it as urgent')}
+    </div>
+    ${d.safety === 'yes' ? `<div class="hero err sos" role="alert">${em('telephone')}<p class="tile-t">${t('Call 112 now')}</p><p>${t('Saath does not send emergency help. Call the national emergency number, then come back to report so care can continue.')}</p><p class="num">112</p><a class="btn danger" href="tel:112">${ic('phone')}<span>${t('Call 112')}</span></a></div>` : ''}
+  </main><footer class="foot">${btn(t('Continue'), `data-go="details" ${d.safety ? '' : 'disabled'}`, { icon: 'arrow', trail: true })}</footer></div>`;
+};
+
+V.details = p => {
+  const d = S.draft, E = p.errs || [];
+  const choices = (field, opts, emo) => `<div class="choices">${Object.entries(opts).map(([k, l]) =>
+    `<button type="button" class="choice" aria-pressed="${d[field].includes(k)}" data-act="chip" data-field="${field}" data-v="${k}" data-multi="1">${em(emo[k])}<span>${t(l)}</span><span class="tick">${ic('check')}</span></button>`).join('')}</div>`;
+  const dropdown = (field, opts, emo) => `<details class="dd"><summary class="dd-sum" id="dd-${field}">${ddText(field)}</summary><div class="dd-menu">${Object.entries(opts).map(([k, l]) =>
+    `<button type="button" class="dd-i" aria-pressed="${d[field].includes(k)}" data-act="chip" data-field="${field}" data-v="${k}" data-multi="1">${em(emo[k])}<span>${t(l)}</span><span class="cb">${ic('check')}</span></button>`).join('')}</div></details>`;
+  const chips = (field, opts, cls = 'chip', wrap = 'chips') => `<div class="${wrap}">${Object.entries(opts).map(([k, l]) =>
+    `<button type="button" class="${cls}" aria-pressed="${d[field] === k}" data-act="chip" data-field="${field}" data-v="${k}">${ic('check', 'ck')}<span>${t(l)}</span></button>`).join('')}</div>`;
+  const grp = (key, label, inner, { hint = '', count = '' } = {}) => `<fieldset class="grp ${E.includes(key) ? 'bad' : ''}" id="g-${key}"><legend class="lbl">${t(label)}${count !== '' ? `<span class="count" id="c-${key}">${count || ''}</span>` : ''}</legend>${hint ? `<p class="hint">${t(hint)}</p>` : ''}${inner}${E.includes(key) ? `<p class="err">${t('Please answer this.')}</p>` : ''}</fieldset>`;
+  return `<div class="scr">${bar({ back: true })}${steps(2)}<main class="body form">
+    <h1 class="h1">${t('What do you know?')}</h1>
+    ${d.fromVoice ? `<div class="note">${em('mic')}<p>${t('Filled in from what you said. Check each part and fix anything we got wrong.')}</p></div>` : `<p class="lede">${t('Share only what you know. Skip anything you’re unsure of.')}</p>`}
+    ${grp('who', 'Who needs support?', dropdown('who', WHO, WHO_E), { count: d.who.length })}
+    ${grp('help', 'What help is needed?', choices('help', HELP, HELP_E), { count: d.help.length })}
+    ${grp('where', 'Where can a volunteer find them?', `<div>${tf('f-landmark', t('Landmark'), { value: d.landmark, attrs: 'data-field="landmark"', cls: E.includes('where') && !d.landmark ? 'bad' : '', support: `${t('A landmark people know, e.g. near the temple')}. ${t('We don’t detect your location.')}` })}</div>${chips('zone', { A: 'Zone A · Shanti Nagar', B: 'Zone B · Lake Road' })}`)}
+    ${grp('photo', 'Photo', `<div class="ph">${photoBlock(d)}</div>`, { hint: 'Optional. Helps the volunteer find and recognise them. Ask before photographing someone.' })}
+    ${grp('about', 'About them', `<div class="grid2">${tf('f-name', t('Name'), { value: d.name, attrs: 'data-field="name" autocomplete="off"' })}${tf('f-age', t('Age'), { value: d.age, attrs: 'data-field="age" inputmode="numeric"' })}</div>${chips('gender', GENDER)}`, { hint: 'Optional. Leave blank if you don’t know.' })}
+    ${grp('rel', 'How do you know them?', `<label class="tf sel"><select id="f-rel" data-field="rel"><option value="">${t('Choose one')}</option>${Object.entries(REL).map(([k, l]) => `<option value="${k}" ${d.rel === k ? 'selected' : ''}>${t(l)}</option>`).join('')}</select><span class="lab">${t('Your relationship')}</span></label>${chips('know', KNOW)}`)}
+    ${grp('consent', 'Did they agree to share their details?', chips('consent', CONSENT), { hint: 'If they didn’t agree, we share only the need and the place.' })}
+    ${grp('notes', 'Anything else?', tf('f-notes', t('Notes'), { value: d.notes, area: true, attrs: 'data-field="notes" rows="4"', support: t('What you saw or heard. Not a diagnosis.') }))}
+  </main><footer class="foot two">${btn(t('Save for later'), 'data-act="saveDraft"', { v: 'tonal' })}${btn(t('Review'), 'data-act="toReview"', { icon: 'arrow', trail: true })}</footer></div>`;
+};
+
+V.review = () => {
+  const d = S.draft;
+  const row = (k, v) => v ? `<div class="kv"><dt>${t(k)}</dt><dd>${v}</dd></div>` : '';
+  const about = [d.name && esc(d.name), d.age && `${esc(d.age)} ${t('yrs')}`, d.gender && t(GENDER[d.gender])].filter(Boolean).join(' · ');
+  return `<div class="scr">${bar({ back: true })}${steps(3)}<main class="body">
+    <h1 class="h1">${t('Check before you send')}</h1>
+    <div class="card"><div class="rc-row">${badge(d)}${btn(t('Edit'), 'data-act="back"', { v: 'text', icon: 'pen' })}</div>
+      <dl class="kvs">
+        ${row('Who', d.who.map(w => `<span class="mini">${em(WHO_E[w])}${t(WHO[w])}</span>`).join(''))}
+        ${row('Help', d.help.map(h => `<span class="mini">${em(HELP_E[h])}${t(HELP[h])}</span>`).join(''))}
+        ${row('Where', `<span class="mini">${em('pin')}${esc(d.landmark)} · ${t('Zone')} ${d.zone}</span>`)}
+        ${row('About them', about)}
+        ${row('You are their', d.rel && t(REL[d.rel]) + (d.know ? ' · ' + t(KNOW[d.know]) : ''))}
+        ${row('Consent', t(CONSENT[d.consent]))}
+        ${row('Notes', esc(d.notes))}
+        ${row('Photo', d.photo && `<img class="thumb" src="${d.photo}" alt="${t('Attached photo')}">`)}
+      </dl></div>
+    <div class="note">${em('shield')}<p>${d.consent === 'agreed' ? t('The ward coordinator and the volunteer who takes this will see these details.') : t('Without consent, volunteers see only the need and the place. Name and age stay with the coordinator.')}</p></div>
+    <p class="fine">${t('A report asks for care. It does not send emergency help. In danger, call 112.')}</p>
+  </main><footer class="foot">${btn(t('Send report'), 'data-act="submit"', { icon: 'check' })}</footer></div>`;
+};
+
+V.sent = p => {
+  const c = byId(p.id), q = c.status === 'queued';
+  return `<div class="scr">${bar()}<main class="body">
+    ${q
+      ? `<div class="hero warn done">${orb('phone', 'calm', 120)}<p class="eyebrow">${t('Report saved')}</p><h1 class="h1">${t('It will upload as soon as you’re back online.')}</h1><p>${t('If you can, stay with the person until help arrives.')}</p><p class="mono big-id">${c.id}</p></div>`
+      : `<div class="hero ok done">${orb('check', 'calm', 120)}<p class="eyebrow">${t('Report sent')}</p><h1 class="h1">${t('Thank you. A ward coordinator will look at it soon.')}</h1><p class="mono big-id">${c.id}</p></div>`}
+    <section class="card"><h2 class="h2">${t('What happens next')}</h2>${timeline(c)}</section>
+  </main><footer class="foot">${btn(t('Track this request'), `data-act="track" data-p="${c.id}"`, { icon: 'arrow', trail: true })}${btn(t('Back to home'), 'data-act="home"', { v: 'text' })}</footer></div>`;
+};
+
+V.requests = () => `<div class="scr">${bar()}<main class="body has-fab">
+  <div><p class="eyebrow">${t('Your requests')}</p><h1 class="h1">${t('Every report, every step.')}</h1></div>
+  ${S.draft ? draftCard() : ''}
+  <div class="stack">${S.cases.filter(c => c.mine).map(reqCard).join('')}</div>
+</main><button class="fab" data-act="startReport">${ic('pen')}<span>${t('Report another need')}</span></button>${nav('requests')}</div>`;
+
+V.request = p => {
+  const c = byId(p.id), n = step(c);
+  return `<div class="scr">${bar({ back: true })}<main class="body">
+    <div class="hero ${heroFor(c)}">
+      <div class="rc-row"><span class="mono">${c.id}</span><span class="tag">${c.example ? t('Example') : urgTag(c)}</span></div>
+      <div class="hero-ring">${ring(n / 5)}<div class="ring-c"><span class="big-n">${n}<small>/5</small></span><span>${statusText(c)}</span></div></div>
+      <p class="hero-t">${helpText(c)}</p>
+      <p class="rc-meta">${em('pin')}${esc(c.landmark)}</p>
+    </div>
+    ${c.status === 'assigned' ? tracker(c) : ''}
+    <section class="card"><h2 class="h2">${t('Progress')}</h2>${timeline(c)}</section>
+    <section class="card"><h2 class="h2">${t('What you told us')}</h2><p>${esc(t(c.summary))}</p>${c.photo ? `<img class="photo" src="${c.photo}" alt="${t('Attached photo')}">` : ''}</section>
+  </main></div>`;
+};
+
+V.guides = () => `<div class="scr">${bar()}<main class="body">
+  <div><p class="eyebrow">${t('Guides')}</p><h1 class="h1">${t('A little guidance helps.')}</h1></div>
+  <p class="lede">${t('Short, practical notes. Not medical advice.')}</p>
+  <div class="list">${Object.entries(GUIDES).map(([k, g]) => `<button class="li" data-go="guide" data-p="${k}"><span class="emo-box">${em(GUIDE_LOOK[k][1])}</span><span class="li-t"><b>${t(g.t)}</b></span>${ic('chev', 'chev')}</button>`).join('')}</div>
+</main>${nav('guides')}</div>`;
+
+V.guide = p => {
+  const k = GUIDES[p.id] ? p.id : 'danger', g = GUIDES[k], [look, e] = GUIDE_LOOK[k];
+  return `<div class="scr">${bar({ back: true })}<main class="body">
+    <div class="hero guide-hero ${look}">${em(e)}<h1 class="h1">${t(g.t)}</h1>${g.num ? `<p class="num">${g.num}</p><a class="btn ${look === 'err' ? 'danger' : 'filled'}" href="tel:${g.num}">${ic('phone')}<span>${t('Call')} ${g.num}</span></a>` : ''}</div>
+    <ol class="steps-list">${g.body.map(b => `<li>${t(b)}</li>`).join('')}</ol>
+  </main>${nav('guides')}</div>`;
+};
+
+V.vHome = () => {
+  const v = me();
+  const zone = S.cases.filter(c => live(c) && c.zone === v.zone && c.status !== 'closed');
+  const can = zone.filter(c => isOpen(c) && canTake(c));
+  const mine = S.cases.filter(c => c.assignedTo === S.user.vid && c.status !== 'closed');
+  const ready = can.sort((a, b) => ORDER[urgency(a)] - ORDER[urgency(b)]).slice(0, 3);
+  const st = vState(v), all = S.cases.filter(c => live(c) && c.zone === v.zone), team = TEAM[v.zone];
+  const unseen = alerts(v).filter(x => !S.dismissed.includes(x.c.id)).length;
+  return `<div class="scr vdash"><div class="vd-glow tone-${st.tone}" aria-hidden="true"><span></span><span></span></div>${bar()}<main class="body">
+    <div class="vd-hero tone-${st.tone}" role="status">
+      <p class="eyebrow">${t('Zone')} ${v.zone} · ${ZONES[v.zone]} · ${esc(v.name)}</p>
+      <h1 class="vd-title">${t(st.title)}</h1>
+      <p class="vd-sub">${t(st.sub)}</p>
+      ${st.cta ? `<button class="vd-cta" ${st.cta[1]}>${t(st.cta[0])}</button>` : ''}
+    </div>
+    <div class="vd-sheet">
+      <div class="grid2">
+        <button class="btn outlined vd-alerts" data-act="alerts">${ic('bell')}<span>${t('Alerts')}</span>${unseen ? `<span class="count">${unseen}</span>` : ''}</button>
+        ${btn(t('Report'), 'data-act="startReport"', { icon: 'plus' })}
+      </div>
+      ${mine.length ? `<section class="stack"><h2 class="h2">${t('Your tasks')}</h2>${mine.map(caseCard).join('')}</section>` : ''}
+      <section class="stack"><h2 class="h2">${t('Overview')}</h2>
+        <div class="grid2">
+          <div class="stat"><span class="stat-l">${t('Volunteers on duty')}</span><span class="stat-row">${miniRing(team.on / team.all)}<span><span class="stat-n">${team.on}</span><small>${t('out of {n}').replace('{n}', team.all)}</small></span></span></div>
+          <div class="stat"><span class="stat-l">${t('Open reports')}</span><span class="stat-row">${miniRing(all.length ? zone.length / all.length : 0)}<span><span class="stat-n">${zone.length}</span><small>${t('out of {n}').replace('{n}', all.length)}</small></span></span>${btn(t('Open'), 'data-go="vCases" data-f="zone"', { v: 'filled sm' })}</div>
+        </div>
+      </section>
+      <section class="stack"><div class="sec-h"><h2 class="h2">${t('Live tracking')}</h2>${btn(t('All cases'), 'data-go="vCases" data-f="zone"', { v: 'text' })}</div>${map(v)}</section>
+      <section class="stack"><h2 class="h2">${t('Ready for you')}</h2>
+        ${ready.map(caseCard).join('') || `<div class="card">${em('sparkles')}<p>${t('Nothing needs you right now. New tasks will show up here.')}</p></div>`}
+      </section>
+    </div>
+  </main>${nav('vHome')}</div>`;
+};
+// ponytail: duty roster is illustrative; the real number comes from the coordinator's shift sheet
+const TEAM = { A: { on: 18, all: 26 }, B: { on: 11, all: 19 } };
+const miniRing = f => { const C = 2 * Math.PI * 18; return `<svg class="mini-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="18"/><circle class="mr-fill" cx="22" cy="22" r="18" stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 22 22)"/></svg>`; };
+function alerts(v) {
+  const zone = S.cases.filter(c => live(c) && c.zone === v.zone && c.status !== 'closed');
+  const out = zone.filter(c => c.escalated).map(c => ({ c, kind: 'Escalated' }));
+  zone.filter(c => c.status === 'received' && !c.escalated).forEach(c => out.push({ c, kind: 'New report nearby' }));
+  return out.sort((x, y) => lastT(y.c) - lastT(x.c));
+}
+// Home headline, in priority order: urgent work, unseen reports, unread messages, all clear (Figma home variants)
+function vState(v) {
+  const zone = S.cases.filter(c => live(c) && c.zone === v.zone && c.status !== 'closed');
+  const hot = zone.find(c => urgency(c) === 'urgent' && !c.assignedTo);
+  if (hot) return { tone: 'err', title: 'Priority alert waiting', sub: 'An urgent case in your zone needs someone now.', cta: ['View details', `data-go="case" data-p="${hot.id}"`] };
+  if (zone.some(c => c.status === 'received' && !S.dismissed.includes(c.id))) return { tone: 'warn', title: 'You have new alerts', sub: 'New reports came in near you.', cta: ['Go to alerts', 'data-act="alerts"'] };
+  const unread = Object.values(S.chats).reduce((n, c) => n + c.unread, 0);
+  if (unread) return { tone: 'blue', title: 'You have new messages', sub: t('{n} unread in your chats.').replace('{n}', unread), cta: ['Go to messages', 'data-go="chats" data-tab="1"'] };
+  return { tone: 'ok', title: 'Awesome!', sub: 'Nothing new came up. You’re all sorted.' };
+}
+
+V.vMap = p => {
+  const v = me(), f = p.f || 'all', sel = p.id ? byId(p.id) : null;
+  const only = { all: null, can: c => isOpen(c) && canTake(c), urgent: c => urgency(c) === 'urgent' }[f];
+  const chip = (k, l) => `<button type="button" class="chip" aria-pressed="${f === k}" data-act="mapFilter" data-v="${k}">${ic('check', 'ck')}<span>${t(l)}</span></button>`;
+  const card = sel ? `<div class="fm-card t-${tint(sel)}" role="status">
+      <div class="rc-row"><span class="mono">${sel.id} · ${t('Zone')} ${sel.zone}</span>${badge(sel)}</div>
+      <b class="rc-title">${helpText(sel)}</b>
+      <span class="rc-meta">${em('pin')}${esc(sel.landmark)}</span>
+      <div class="rc-row"><span class="fine">${walk(sel, v)}</span>${btn(t('Open case'), `data-go="case" data-p="${sel.id}"`, { v: 'filled sm', icon: 'arrow', trail: true })}</div>
+    </div>` : `<p class="fm-hint">${t('Tap a pin to see the case.')}</p>`;
+  return `<div class="scr">${bar({ back: true, title: t('Map') })}
+    <div class="fm-tools chips">${chip('all', 'All')}${chip('can', 'You can take')}${chip('urgent', 'Urgent')}</div>
+    <div class="fm-wrap"><div class="fm" id="fm">${mapSvg(v, sel, { full: true, only })}</div>
+      ${legend()}
+      <div class="fm-zoom">
+        <button class="icon-btn" data-act="zoom" data-v="1" aria-label="${t('Zoom in')}">${ic('plus')}</button>
+        <button class="icon-btn" data-act="zoom" data-v="-1" aria-label="${t('Zoom out')}">${ic('minus')}</button>
+        <button class="icon-btn" data-act="recenter" aria-label="${t('Back to me')}">${ic('locate')}</button>
+      </div>
+    </div>
+    ${card}
+  </div>`;
+};
+
+V.vCases = p => {
+  const f = p.f || 'can', v = me();
+  const list = S.cases.filter(live).filter(c => f === 'mine'
+    ? c.assignedTo === S.user.vid || c.closedBy === S.user.vid
+    : c.status !== 'closed' && (f === 'zone' ? c.zone === v.zone : isOpen(c) && canTake(c)));
+  const seg = (k, l) => `<button class="seg-b" aria-pressed="${f === k}" data-act="filter" data-v="${k}">${ic('check', 'ck')}<span>${t(l)}</span></button>`;
+  const empty = f === 'mine' ? 'You haven’t taken a task yet.' : 'Nothing here right now. New reports appear as neighbours send them.';
+  return `<div class="scr">${bar()}<main class="body">
+    <div><p class="eyebrow">${t('Cases')} · ${t('Zone')} ${v.zone}</p><h1 class="h1">${t('Where you can help')}</h1></div>
+    <div class="seg">${seg('can', 'You can take')}${seg('zone', 'All in zone')}${seg('mine', 'Yours')}</div>
+    <div class="stack">${list.map(caseCard).join('') || `<div class="card">${em('clipboard')}<p>${t(empty)}</p></div>`}</div>
+    ${f === 'zone' ? `<section class="stack"><h2 class="h2">${t('Your neighbourhood')}</h2>${map(v)}</section>` : ''}
+  </main>${nav('vCases')}</div>`;
+};
+
+V.case = p => {
+  const c = byId(p.id), mine = c.assignedTo === S.user.vid;
+  const about = c.consent === 'agreed' ? [c.name, c.age && `${c.age} ${t('yrs')}`, c.gender && t(GENDER[c.gender])].filter(Boolean).map(esc).join(' · ') : '';
+  let action = '';
+  if (c.status === 'closed') action = `<div class="scope yes">${em('check')}<p><b>${statusText(c)}</b></p></div>`;
+  else if (mine) action = `${btn(t('Record the visit'), 'data-act="outcome"', { icon: 'check' })}${btn(t('I can’t do this after all'), 'data-act="release"', { v: 'text' })}`;
+  else if (c.assignedTo) action = `<p class="fine center">${t('Taken by')} ${VOLS[c.assignedTo].name}</p>`;
+  else if (canTake(c)) action = btn(t('Accept this task'), 'data-act="accept"', { icon: 'check' });
+  if (c.status !== 'closed' && !c.escalated && c.zone === me().zone) action += btn(t('Escalate'), 'data-act="escalate"', { v: 'outlined warn-o', icon: 'up' });
+  const photo = !c.photo ? '' : mine ? `<img class="photo" src="${c.photo}" alt="${t('Attached photo')}">` : `<p class="muted ph-lock">${ic('camera')}${t('Photo attached. You’ll see it once you accept this task.')}</p>`;
+  return `<div class="scr">${bar({ back: true })}<main class="body">
+    <div class="hero ${heroFor(c)}">
+      <div class="rc-row"><span class="mono">${c.id} · ${t('Zone')} ${c.zone}</span><span class="tag">${urgTag(c)}</span></div>
+      <div class="row">${c.help.map(h => em(HELP_E[h])).join('')}</div>
+      <h1 class="h1">${helpText(c)}</h1>
+      <p class="rc-meta">${em('pin')}${esc(c.landmark)}</p>
+    </div>
+    ${scopeBox(c)}
+    ${c.zone === me().zone && c.status !== 'closed' ? caseMap(c, me()) : ''}
+    <section class="card"><h2 class="h2">${t('What the reporter saw')}</h2><p>${esc(t(c.summary))}</p>${photo}
+      <dl class="kvs">
+        <div class="kv"><dt>${t('Who')}</dt><dd>${c.who.map(w => `<span class="mini">${em(WHO_E[w])}${t(WHO[w])}</span>`).join('')}</dd></div>
+        <div class="kv"><dt>${t('About them')}</dt><dd>${about || `<span class="muted">${t('Not shared')} · ${t(CONSENT[c.consent] || 'Not asked')}</span>`}</dd></div>
+        <div class="kv"><dt>${t('Reporter')}</dt><dd>${t(REL[c.rel] || 'Prefer not to say')}${c.know ? ' · ' + t(KNOW[c.know]) : ''}</dd></div>
+      </dl></section>
+    <section class="card"><h2 class="h2">${t('Progress')}</h2>${timeline(c)}</section>
+  </main>${action ? `<footer class="foot">${action}</footer>` : ''}</div>`;
+};
+
+const chatTime = ts => new Date(ts).toDateString() === new Date().toDateString()
+  ? new Date(ts).toLocaleTimeString(S.lang === 'hi' ? 'hi' : 'en-IN', { hour: '2-digit', minute: '2-digit' }) : ago(ts);
+const chatAvatar = c => c.emoji ? `<span class="emo-box">${em(c.emoji)}</span>` : `<span class="avatar ${c.kind}">${esc(c.name[0])}</span>`;
+
+V.chats = p => {
+  const f = p.f || 'vol';
+  const seg = (k, l) => `<button class="seg-b" aria-pressed="${f === k}" data-act="filter" data-v="${k}">${ic('check', 'ck')}<span>${t(l)}</span></button>`;
+  const rows = Object.entries(S.chats).filter(([, c]) => c.kind === f).map(([id, c]) => {
+    const last = c.msgs[c.msgs.length - 1];
+    return `<button class="li chat-li" data-go="thread" data-p="${id}">${chatAvatar(c)}<span class="li-t"><b>${esc(c.name)}${c.members ? ` <small class="mono">· ${c.members}</small>` : ''}</b><small>${last.me ? t('You') + ': ' : c.kind === 'grp' ? esc(last.who) + ': ' : ''}${esc(last.text)}</small></span>
+      <span class="chat-meta"><small>${chatTime(last.t)}</small>${c.unread ? `<span class="count">${c.unread}</span>` : ''}</span></button>`;
+  }).join('');
+  return `<div class="scr">${bar()}<main class="body">
+    <div><p class="eyebrow">${t('Chats')} · ${t('Zone')} ${me().zone}</p><h1 class="h1">${t('Stay in touch')}</h1></div>
+    <div class="seg">${seg('vol', 'Volunteers')}${seg('grp', 'Groups')}${seg('auth', 'Authorities')}</div>
+    <div class="list">${rows}</div>
+  </main>${nav('chats')}</div>`;
+};
+
+V.thread = p => {
+  const c = S.chats[p.id];
+  return `<div class="scr">${bar({ back: true, title: esc(c.name) })}<main class="body msgs">
+    ${c.msgs.map(m => `<div class="msg ${m.me ? 'me' : ''}">${!m.me && c.kind === 'grp' ? `<b>${esc(m.who)}</b>` : ''}<span>${esc(m.text)}</span><small>${chatTime(m.t)}</small></div>`).join('')}
+  </main><form class="composer" id="chatForm"><label class="tf"><input id="msg" placeholder=" " autocomplete="off"><span class="lab">${t('Message')}</span></label><button class="icon-btn send" type="submit" aria-label="${t('Send')}">${ic('send')}</button></form></div>`;
+};
+
+/* ---------- sheets & snackbar ---------- */
+function sheet(html) {
+  const w = $('#sheet');
+  w.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><span class="grab"></span>${html}</div>`;
+  w.hidden = false;
+  w.querySelector('button, input, textarea')?.focus();
+}
+function closeSheet() { const w = $('#sheet'); w.hidden = true; w.innerHTML = ''; }
+function toast(msg, snd = 'notify') {
+  const el = $('#toast');
+  el.textContent = msg; el.classList.add('on');
+  sfx(snd);
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 2800);
+}
+function protoSheet() {
+  sheet(`<div class="sheet-head"><span class="emo-box lg">${em('testtube')}</span><div><p class="eyebrow">${t('Prototype')}</p><h2 class="h2">${t('This is a working prototype')}</h2></div></div>
+    <ul class="plist"><li>${t('People, places and cases are made up.')}</li><li>${t('Nothing is sent anywhere. No SMS, no dispatch.')}</li><li>${t('Please don’t enter real personal or medical details.')}</li><li>${t('In a real emergency, call 112.')}</li></ul>
+    <div class="seg">${['en', 'hi'].map(l => `<button class="seg-b" aria-pressed="${(S.lang || 'en') === l}" data-act="setLang" data-v="${l}">${ic('check', 'ck')}<span>${l === 'en' ? 'English' : 'हिंदी'}</span></button>`).join('')}</div>
+    <div class="list"><button class="li" role="switch" aria-checked="${!!S.offline}" data-act="toggleOffline"><span class="emo-box">${em('phone')}</span><span class="li-t"><b>${t('Simulate no connection')}</b><small>${t('New reports are saved on this phone and sent when you switch this off.')}</small></span><span class="switch"></span></button></div>
+    <div class="stack">
+      ${S.user ? btn(t('Switch role'), 'data-act="signout"', { v: 'tonal' }) : ''}
+      ${btn(t('Reset prototype data'), 'data-act="resetAll"', { v: 'outlined' })}
+    </div>`);
+}
+function alertsSheet(list) {
+  sheet(`<div class="sheet-head"><span class="emo-box lg">${em('warning')}</span><div><p class="eyebrow">${t('Alerts')}</p><h2 class="h2">${list.length ? t('{n} need your attention').replace('{n}', list.length) : t('No new alerts')}</h2></div></div>
+    <div class="stack">${list.map(({ c, kind }) => `<div class="pop t-${tint(c)}"><span class="pop-img">${em(HELP_E[c.help[0]])}</span><div class="pop-t"><p class="eyebrow">${t(kind)}</p><b>${helpText(c)}</b><small>${esc(c.landmark)} · ${ago(lastT(c))}</small><div class="row">${btn(t('Locate'), `data-go="case" data-p="${c.id}"`, { v: 'filled sm', icon: 'arrow', trail: true })}</div></div></div>`).join('') || `<p class="fine">${t('You’ll see new reports and escalations here.')}</p>`}</div>`);
+}
+const ESC_WHY = { worse: ['Worse than reported', 'thinking'], medical: ['Needs medical help now', 'medical'], safety: ['Safety risk at the location', 'siren'], other: ['Something else', 'question'] };
+let escPick = '';
+function escalateSheet() {
+  escPick = '';
+  sheet(`<div class="sheet-head"><span class="emo-box lg">${em('warning')}</span><div><p class="eyebrow">${t('Escalate')}</p><h2 class="h2">${t('Send this to the ward coordinator now?')}</h2></div></div>
+    <p class="fine">${t('The case becomes urgent and the coordinator is alerted. The reporter sees that it was escalated. In danger, call 112 first.')}</p>
+    <div class="list" role="radiogroup">${Object.entries(ESC_WHY).map(([k, [a, e]]) => radioItem('pickEsc', k, false, t(a), '', `<span class="emo-box">${em(e)}</span>`)).join('')}</div>
+    ${tf('esc-note', t('What should the coordinator know?'), { area: true, attrs: 'rows="2"' })}
+    <p class="err" id="esc-err" hidden>${t('Choose a reason.')}</p>
+    ${btn(t('Escalate to coordinator'), 'data-act="saveEscalate"', { v: 'danger', icon: 'up' })}`);
+}
+function outcomeSheet() {
+  outcomePick = '';
+  sheet(`<h2 class="h2">${t('How did the visit go?')}</h2>
+    <div class="list" role="radiogroup">${Object.entries(OUT).map(([k, [a, b]]) => radioItem('pickOutcome', k, false, t(a), t(b), `<span class="emo-box">${em(OUT_E[k])}</span>`)).join('')}</div>
+    ${tf('o-note', t('Next step for the coordinator'), { area: true, attrs: 'rows="3"', support: t('e.g. Needs rations again next Monday') })}
+    <p class="err" id="o-err" hidden>${t('Choose how it went.')}</p>
+    ${btn(t('Save and close'), 'data-act="saveOutcome"', { icon: 'check' })}`);
+}
+
+/* ---------- actions ---------- */
+function signIn(user, role) { S.lang = S.lang || 'en'; S.user = user; S.role = role; reset(role === 'vol' ? 'vHome' : 'home'); }
+function submitReport() {
+  const d = S.draft, n = S.cases.filter(c => c.mine && !c.example).length;
+  const c = {
+    ...d, id: `ST-${2051 + n}`, mine: true,
+    xy: d.zone === 'A' ? [40 + (n % 4) * 16, 120] : [282, 140 - (n % 4) * 12],
+    summary: d.notes.trim() || helpText(d), status: S.offline ? 'queued' : 'received', verified: S.user?.verified !== false,
+    events: [{ s: S.offline ? 'queued' : 'received', t: Date.now() }],
+  };
+  delete c.fromVoice; delete c.notes;
+  S.cases.unshift(c);
+  S.draft = null;
+  S.stack = [{ n: S.role === 'vol' ? 'vHome' : 'home', p: {} }, { n: 'sent', p: { id: c.id } }];
+  show('fwd');
+}
+function validate(d) {
+  const e = [];
+  if (!d.who.length) e.push('who');
+  if (!d.help.length) e.push('help');
+  if (!d.landmark.trim() || !d.zone) e.push('where');
+  if (!d.consent) e.push('consent');
+  return e;
+}
+
+// Sound per action; null = the action plays its own (or none). Anything unlisted gets a click.
+const SND = {
+  chip: el => el.classList.contains('choice') ? 'pop' : 'soft',
+  setLang: 'soft', filter: 'soft', pickOutcome: 'soft', pickVol: 'soft', fill: 'soft',
+  safety: el => el.dataset.v === 'yes' ? 'alert' : 'soft',
+  proto: 'pop', outcome: 'pop', escalate: 'pop', pickEsc: 'soft', langNext: 'open', submit: null,
+  toReview: null, saveOutcome: null, saveEscalate: null, toggleSound: null, toggleOffline: null, accept: null, unverified: null, saveDraft: null, removePhoto: 'soft', alerts: 'pop', pickPin: 'pop', mapFilter: 'soft', zoom: 'soft', recenter: 'soft', regNext: null, regApprove: null,
+};
+
+const ACT = {
+  back, home: goHome, proto: protoSheet,
+  setLang: el => { S.lang = el.dataset.v; show(); },
+  toggleLang: () => { S.lang = S.lang === 'hi' ? 'en' : 'hi'; show(); },
+  toggleSound: () => { S.sound = !S.sound; show(); sfx('soft'); },
+  langNext: () => { S.lang = S.lang || 'en'; go('role'); },
+  fill: el => { $('#' + el.dataset.target).value = el.dataset.v; },
+  pickVol: el => { $('#vid').value = el.dataset.v; $('#vcode').value = '2468'; },
+  changePhone: () => { cur().p = { phone: cur().p.phone }; show(); },
+  unverified: () => { signIn({ verified: false }, 'civ'); toast(t('You can report now. Updates need a verified number.')); },
+  signout: () => { S.user = null; S.role = null; S.stack = [{ n: 'lang', p: {} }, { n: 'role', p: {} }]; show('back'); },
+  resetAll: () => { const { lang, sound } = S; S = seed(); Object.assign(S, { lang, sound }); show('fade'); },
+  startReport: () => { S.draft = S.draft || blankDraft(); go('safety'); },
+  resumeDraft: () => go(S.draft.safety ? 'details' : 'safety'),
+  discardDraft: () => { S.draft = null; show(); },
+  voiceDone: () => {
+    S.draft = { ...blankDraft(), who: ['daily', 'alone'], help: ['food', 'medication', 'welfare'], landmark: t('Near the community library, Shanti Nagar'), zone: 'A', gender: 'man', rel: 'neighbour', know: 'spoke', notes: t(SAMPLE_NOTE), fromVoice: true };
+    S.stack.pop();
+    go('safety');
+  },
+  safety: el => { S.draft.safety = el.dataset.v; show(); },
+  startReg: () => {
+    if (S.reg?.status === 'pending') return go('vRegDone');
+    S.reg = S.reg || blankReg(); go('vReg', { s: 1 });
+  },
+  regNext: () => {
+    const r = S.reg, s = cur().p.s || 1, e = [];
+    if (s === 1) { if (!r.name.trim()) e.push('name'); if (r.phone.replace(/\D/g, '').length !== 10) e.push('phone'); if (!r.zone) e.push('zone'); }
+    if (s === 2) { if (!r.skills.length) e.push('skills'); if (!r.avail) e.push('avail'); }
+    if (s === 3) { if (!r.doc) e.push('doc'); if (!r.agree) e.push('agree'); }
+    if (e.length) { sfx('error'); cur().p = { s, errs: e }; show(); return $(`#g-${e[0]}`)?.scrollIntoView({ block: 'center' }); }
+    if (s < 3) { sfx('click'); return go('vReg', { s: s + 1 }); }
+    r.status = 'pending';
+    S.stack = [{ n: 'lang', p: {} }, { n: 'role', p: {} }, { n: 'volLogin', p: {} }, { n: 'vRegDone', p: {} }];
+    show('fwd'); sfx('complete');
+  },
+  regApprove: () => {
+    const r = S.reg, id = `SAATH-V${200 + Object.keys(S.newVols || {}).length + 1}`;
+    // ponytail: approval grants general tasks only; medical/child scopes still wait for the separate qualification check
+    const v = { name: r.name.trim().split(' ')[0], zone: r.zone, scopes: ['general'], skill: 'General care' };
+    S.newVols = { ...(S.newVols || {}), [id]: v };
+    VOLS[id] = v;
+    S.reg = null;
+    signIn({ vid: id }, 'vol');
+    toast(`${t('Approved. Your volunteer ID is')} ${id}`, 'complete');
+  },
+  chip: el => {
+    const { field, v, multi } = el.dataset, d = el.dataset.obj === 'reg' ? S.reg : S.draft;
+    if (multi) {
+      d[field] = d[field].includes(v) ? d[field].filter(x => x !== v) : [...d[field], v];
+      el.setAttribute('aria-pressed', d[field].includes(v));
+      const c = $('#c-' + field);
+      if (c) { c.textContent = d[field].length || ''; c.style.animation = 'none'; void c.offsetWidth; c.style.animation = ''; }
+      const s = $('#dd-' + field);
+      if (s) s.innerHTML = ddText(field);
+    } else {
+      d[field] = d[field] === v ? '' : v;
+      el.parentElement.querySelectorAll('[data-act="chip"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === d[field]));
+    }
+    const g = el.closest('.grp');
+    g?.classList.remove('bad'); g?.querySelector(':scope > .err')?.remove();
+    save();
+  },
+  saveDraft: () => { goHome(); toast(t('Saved on this phone. Resume it from home.')); },
+  toReview: () => {
+    const errs = validate(S.draft);
+    if (!errs.length) { sfx('click'); return go('review'); }
+    sfx('error');
+    cur().p = { errs }; show();
+    $(`#g-${errs[0]}`)?.scrollIntoView({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' });
+  },
+  submit: () => { sfx(S.offline ? 'notify' : 'complete'); submitReport(); },
+  toggleOffline: () => {
+    S.offline = !S.offline;
+    const q = S.offline ? [] : S.cases.filter(c => c.status === 'queued');
+    q.forEach(c => { c.status = 'received'; c.events.push({ s: 'received', t: Date.now() }); });
+    show();
+    if (q.length) toast(t(q.length === 1 ? '1 saved report sent.' : '{n} saved reports sent.').replace('{n}', q.length), 'complete');
+    else toast(t(S.offline ? 'Offline mode on. Reports will be saved on this phone.' : 'Back online.'), 'soft');
+  },
+  removePhoto: () => { S.draft.photo = ''; save(); $('#g-photo .ph').innerHTML = photoBlock(S.draft); },
+  escalate: escalateSheet,
+  pickEsc: el => {
+    escPick = el.dataset.v;
+    el.parentElement.querySelectorAll('.li').forEach(o => o.setAttribute('aria-checked', o === el));
+    $('#esc-err').hidden = true;
+  },
+  saveEscalate: () => {
+    if (!escPick) { $('#esc-err').hidden = false; return sfx('error'); }
+    const c = byId(cur().p.id), note = $('#esc-note').value.trim();
+    c.escalated = true;
+    c.events.push({ s: 'note', text: `${t('Escalated to the ward coordinator')}: ${t(ESC_WHY[escPick][0])}${note ? ' · ' + note : ''}`, t: Date.now() });
+    show(); toast(t('Escalated. The coordinator has been alerted.'), 'alert');
+  },
+  track: el => {
+    S.stack = S.role === 'vol' ? [{ n: 'vHome', p: {} }, { n: 'case', p: { id: el.dataset.p } }] : [{ n: 'home', p: {} }, { n: 'request', p: { id: el.dataset.p } }];
+    show('fwd');
+  },
+  pickPin: el => { cur().p = { ...cur().p, id: el.dataset.p }; show(); },
+  mapFilter: el => { cur().p = { ...cur().p, f: el.dataset.v }; show(); },
+  zoom: el => { const c = mapCenter(); S.mapZ = Math.min(3, Math.max(.6, (S.mapZ || 1) + +el.dataset.v * .4)); fitMap(...c); save(); },
+  recenter: () => fitMap(...HERE[me().zone]),
+  alerts: () => {
+    const list = alerts(me());
+    list.forEach(({ c }) => S.dismissed.includes(c.id) || S.dismissed.push(c.id));
+    show(); alertsSheet(list);
+  },
+  filter: el => { cur().p = { ...cur().p, f: el.dataset.v }; show(); },
+  accept: () => {
+    const c = byId(cur().p.id), now = Date.now();
+    if (!c.events.some(e => e.s === 'reviewed')) c.events.push({ s: 'reviewed', t: now });
+    c.events.push({ s: 'assigned', t: now });
+    c.assignedTo = S.user.vid; c.status = 'assigned';
+    show(); toast(t('Task accepted. The reporter can see a volunteer is on it.'));
+  },
+  release: () => {
+    const c = byId(cur().p.id);
+    c.assignedTo = null; c.status = 'reviewed';
+    c.events.push({ s: 'note', text: 'Volunteer released the task. Back in the queue.', t: Date.now() });
+    show();
+  },
+  outcome: outcomeSheet,
+  pickOutcome: el => {
+    outcomePick = el.dataset.v;
+    el.parentElement.querySelectorAll('.li').forEach(o => o.setAttribute('aria-checked', o === el));
+    $('#o-err').hidden = true;
+  },
+  saveOutcome: () => {
+    if (!outcomePick) { $('#o-err').hidden = false; return sfx('error'); }
+    const c = byId(cur().p.id), now = Date.now(), note = $('#o-note').value.trim();
+    if (outcomePick === 'unreachable') {
+      c.assignedTo = null; c.status = 'reviewed';
+      c.events.push({ s: 'note', text: 'Volunteer couldn’t reach them. Back in the queue.', t: now });
+    } else {
+      c.events.push({ s: 'visited', t: now }, { s: 'closed', t: now });
+      Object.assign(c, { status: 'closed', outcome: outcomePick, closedBy: S.user.vid, helper: me().name });
+    }
+    if (note) c.events.push({ s: 'note', text: note, t: now });
+    show(); toast(t('Saved. The reporter will see the outcome.'), outcomePick === 'unreachable' ? 'notify' : 'complete');
+  },
+};
+
+/* ---------- wiring ---------- */
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest('button');
+  if (!b || b.disabled || reduced()) return;
+  const r = b.getBoundingClientRect(), s = Math.max(r.width, r.height) * 2.2, k = document.createElement('span');
+  k.className = 'rip';
+  k.style.cssText = `width:${s}px;height:${s}px;left:${e.clientX - r.left - s / 2}px;top:${e.clientY - r.top - s / 2}px`;
+  b.appendChild(k);
+  k.addEventListener('animationend', () => k.remove());
+});
+
+// drag to pan the full map with a mouse (touch already scrolls natively); a drag never counts as a tap
+let pan = null, dragged = false;
+document.addEventListener('pointerdown', e => {
+  const fm = e.target.closest('#fm');
+  if (fm && e.pointerType === 'mouse') pan = { fm, x: e.clientX, y: e.clientY, l: fm.scrollLeft, t: fm.scrollTop };
+});
+document.addEventListener('pointermove', e => {
+  if (!pan) return;
+  const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+  if (Math.abs(dx) + Math.abs(dy) > 5) { dragged = true; pan.fm.classList.add('grabbing'); }
+  pan.fm.scrollLeft = pan.l - dx; pan.fm.scrollTop = pan.t - dy;
+});
+document.addEventListener('pointerup', () => { pan?.fm.classList.remove('grabbing'); pan = null; });
+
+document.addEventListener('click', e => {
+  if (dragged) { dragged = false; return; }
+  if (e.target.id === 'sheet') return closeSheet();
+  document.querySelectorAll('details.dd[open]').forEach(dd => { if (!dd.contains(e.target)) dd.open = false; });
+  const el = e.target.closest('[data-go],[data-act],[data-demo]');
+  if (!el || el.disabled) return;
+  if (el.dataset.demo) {
+    sfx('open');
+    if (el.dataset.demo === 'civ') signIn({ phone: '90000 00001', verified: true }, 'civ');
+    else if (el.dataset.demo === 'vol') signIn({ vid: 'SAATH-V101' }, 'vol');
+    else { const { sound } = S; S = seed(); S.sound = sound; show('fade'); }
+    return;
   }
-  if(form.id==='intake-form'){formErrors=M.validate(draft());if(formErrors.length){render();document.querySelector('.notice.red')?.scrollIntoView({block:'center'});sound('error');return}formErrors=[];go('/review');sound('step')}
-  if(form.id==='review-form'){const d={...draft(),confirm:fd.has('confirm')},c=M.submit(db,d);persist();go('/receipt/'+c.id);sound(c.transport==='ack'?'success':'soft')}
-  if(form.id==='check-form'){const status=M.field(db,form.dataset.id,'check',{taskId:form.dataset.task,contact:values.contact,consent:values.consent,note:values.note});delete fieldDraft[form.dataset.task];persist();go('/case/'+form.dataset.id);toast(status==='queued'?L('Field observation saved locally · NOT SENT.'):L('Welfare check recorded. Review the case’s next action.'));sound(values.contact==='reached'?'step':'alert')}
-  if(form.id==='outcome-form'){const status=M.field(db,form.dataset.id,'outcome',{taskId:form.dataset.task,note:values.note,confirmation:values.confirmation,recurring:fd.has('recurring'),due:values.due?new Date(values.due).toISOString():'',next:values.next});delete fieldDraft[form.dataset.task];persist();go('/case/'+form.dataset.id);toast(status==='queued'?L('Outcome saved locally · NOT SENT.'):L('Outcome recorded. Remaining care stays visible.'));sound(status==='applied'&&values.confirmation==='confirmed'?'success':'soft')}
-  if(form.id==='escalate-form'){const status=M.field(db,form.dataset.id,'escalate',{note:values.note});closeDialog();persist();go('/case/'+form.dataset.id);toast(status==='queued'?L('Escalation queued · NOT SENT. Seek direct help for immediate danger.'):L('Escalation recorded for the demo coordinator. No external dispatch.'));sound('alert')}
-  if(form.id==='chat-form'){if(!chatAllowed(currentChannel))throw Error('access');const text=values.message.trim();if(!text)throw Error('invalid');const key=chatKey(currentChannel);db.chats[key]||=[];db.chats[key].push({id:M.id('MSG'),sender:db.session.account,text,at:M.now(),pending:!M.online(db)});if(M.online(db))db.chats[key].push({id:M.id('MSG'),sender:'coordinator',text:L('Demo reply: message noted. Use the case actions to request qualified help or record an outcome; this chat does not change case status.'),at:M.now(),pending:false});persist();render();document.querySelector('[name="message"]')?.focus();sound('notify')}
-}catch(error){fail(error)}});
-window.addEventListener('pagehide',()=>stopVoice());
-document.getElementById('dialog').addEventListener('close',e=>{const field=e.target.dataset.selection;e.target.className='';delete e.target.dataset.selection;if(field)document.querySelector(`[data-action="open-selection"][data-field="${field}"]`)?.focus()});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)SaathVoice.stop()});
-window.addEventListener('hashchange',()=>{stopVoice();render();window.scrollTo(0,0);document.getElementById('main')?.focus({preventScroll:true})});
-window.addEventListener('offline',()=>{db.prefs.network='offline';persist();render();toast(L('Connection lost. New changes will stay on this device.'))});
-window.addEventListener('online',()=>{db.prefs.network='online';if(db.session)try{syncAll()}catch(e){fail(e)}else render()});
-window.addEventListener('storage',e=>{if(e.key===M.KEY){const r=M.load(localStorage);if(!r.warning){db=r.db;render()}}});
-render();
+  if (el.dataset.go) {
+    sfx(el.dataset.tab ? 'soft' : 'click');
+    const p = { id: el.dataset.p, f: el.dataset.f };
+    if (el.dataset.go === 'thread') S.chats[p.id].unread = 0;
+    return el.dataset.tab ? reset(el.dataset.go, p) : go(el.dataset.go, p);
+  }
+  const act = el.dataset.act, a = ACT[act];
+  if (!a) return;
+  e.preventDefault();
+  const snd = act in SND ? SND[act] : 'click';
+  sfx(typeof snd === 'function' ? snd(el) : snd);
+  a(el);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeSheet();
+  const g = e.target.closest?.('g[role="button"]');
+  if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); g.dispatchEvent(new MouseEvent('click', { bubbles: true })); }
+});
+
+document.addEventListener('input', e => {
+  const f = e.target.dataset?.field, o = e.target.dataset.obj === 'reg' ? S.reg : S.draft;
+  if (!f || !o) return;
+  o[f] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+  save();
+  const g = e.target.closest('.grp');
+  if (g?.classList.contains('bad')) { g.classList.remove('bad'); g.querySelector(':scope > .err')?.remove(); g.querySelector('.tf.bad')?.classList.remove('bad'); }
+});
+
+document.addEventListener('change', e => {
+  if (e.target.id !== 'f-photo' || !e.target.files[0]) return;
+  shrink(e.target.files[0])
+    .then(url => { S.draft.photo = url; save(); $('#g-photo .ph').innerHTML = photoBlock(S.draft); sfx('pop'); })
+    .catch(() => toast(t('We couldn’t read that file. Try a JPG or PNG photo.'), 'error'));
+});
+
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  const p = cur().p;
+  if (e.target.id === 'chatForm') {
+    const text = $('#msg').value.trim();
+    if (!text) return;
+    S.chats[p.id].msgs.push({ who: 'You', text, me: true, t: Date.now() });
+    sfx('soft'); show();
+    $('#msg').focus();
+  }
+  if (e.target.id === 'civForm') {
+    if (p.step === 'otp') {
+      if ($('#otp').value.trim() === '123456') { signIn({ phone: p.phone, verified: true }, 'civ'); toast(t('You’re signed in.')); }
+      else { sfx('error'); cur().p = { ...p, err: 'That code doesn’t match. Check the 6 digits and try again.' }; show(); $('#otp').focus(); }
+    } else {
+      const raw = $('#phone').value, digits = raw.replace(/\D/g, '');
+      if (digits.length !== 10) { sfx('error'); cur().p = { phone: raw, err: 'Enter a 10-digit mobile number.' }; show(); }
+      else { sfx('click'); cur().p = { step: 'otp', phone: digits.replace(/(\d{5})(\d{5})/, '$1 $2') }; show('fwd'); $('#otp').focus(); }
+    }
+  }
+  if (e.target.id === 'volForm') {
+    const id = $('#vid').value.trim().toUpperCase();
+    if (VOLS[id] && $('#vcode').value.trim() === '2468') { signIn({ vid: id }, 'vol'); toast(`${t('Welcome')}, ${VOLS[id].name}`); }
+    else { sfx('error'); cur().p = { vid: id, err: 'That ID and code don’t match. Check with your ward coordinator.' }; show(); }
+  }
+});
+
+show('fade');
